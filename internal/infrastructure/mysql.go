@@ -5,17 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
+
+	"github.com/assidik12/go-restfull-api/config"
 )
 
-func DatabaseConnection() *sql.DB {
+func DatabaseConnection(c config.Config) *sql.DB {
+
 	DB, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True",
-		os.Getenv("MYSQL_USER"),
-		os.Getenv("MYSQL_PASSWORD"),
-		os.Getenv("MYSQL_HOST"),
-		os.Getenv("MYSQL_PORT"),
-		os.Getenv("MYSQL_DATABASE"),
+		c.DBUser,
+		c.DBPassword,
+		c.DBHost,
+		c.DBPort,
+		c.DBName,
 	))
 
 	if err != nil {

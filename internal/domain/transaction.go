@@ -9,7 +9,6 @@ type Transaction struct {
 }
 
 type TransactionDetail struct {
-	Transaction_detail_id string
-	Quantyty              int
-	Product_id            int
+	Quantyty   int
+	Product_id int
 }

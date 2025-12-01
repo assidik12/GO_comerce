@@ -21,7 +21,7 @@ CREATE TABLE `products` (
     `name` VARCHAR(255) NOT NULL,
     `price` INT NOT NULL,
     `stock` INT NOT NULL,
-    `gambar` VARCHAR(255) NOT NULL,
+    `img` VARCHAR(255) NOT NULL,
     `description` VARCHAR(255) NOT NULL,
     `category_id` INT NOT NULL,
     PRIMARY KEY (`id`),

@@ -84,7 +84,7 @@ func (t *transactionRepository) FindById(ctx context.Context, id int) (domain.Tr
 	var details []domain.TransactionDetail
 	for rows.Next() {
 		var detail domain.TransactionDetail
-		err := rows.Scan(&detail.Transaction_detail_id, &detail.Quantyty, &detail.Product_id)
+		err := rows.Scan(&detail.Quantyty, &detail.Product_id)
 		if err != nil {
 			return domain.Transaction{}, err
 		}
@@ -130,7 +130,7 @@ func (t *transactionRepository) GetAll(ctx context.Context, idUser int) ([]domai
 		var details []domain.TransactionDetail
 		for rowsDetail.Next() {
 			var detail domain.TransactionDetail
-			err := rowsDetail.Scan(&detail.Transaction_detail_id, &detail.Quantyty, &detail.Product_id)
+			err := rowsDetail.Scan(&detail.Quantyty, &detail.Product_id)
 			if err != nil {
 				// Penting untuk menutup rowsDetail di sini sebelum return
 				rowsDetail.Close()

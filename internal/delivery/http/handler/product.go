@@ -49,10 +49,6 @@ func (ph *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request, 
 		response.BadRequest(w, err.Error())
 		return
 	}
-	if w.Header().Get("role") != "admin" {
-		response.Unauthorized(w, "Unauthorized")
-		return
-	}
 
 	product, err := ph.service.CreateProduct(r.Context(), req)
 	if err != nil {
@@ -75,11 +71,6 @@ func (ph *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	if w.Header().Get("role") != "admin" {
-		response.Unauthorized(w, "Unauthorized")
-		return
-	}
-
 	product, err := ph.service.UpdateProduct(r.Context(), idInt, req)
 	if err != nil {
 		response.InternalServerError(w, err.Error())
@@ -93,11 +84,6 @@ func (ph *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request, 
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
 		response.BadRequest(w, err.Error())
-		return
-	}
-
-	if w.Header().Get("role") != "admin" {
-		response.Unauthorized(w, "Unauthorized")
 		return
 	}
 

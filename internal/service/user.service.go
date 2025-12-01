@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/assidik12/go-restfull-api/config"
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/dto"
 	"github.com/assidik12/go-restfull-api/internal/domain"
 	"github.com/assidik12/go-restfull-api/internal/pkg/jwt"
@@ -52,6 +53,7 @@ func (s *userService) Register(ctx context.Context, req dto.RegisterRequest) (dt
 	newUser := domain.User{
 		Name:      req.Name,
 		Email:     req.Email,
+		Role:      "user",
 		Password:  string(hashedPassword),
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -72,6 +74,8 @@ func (s *userService) Register(ctx context.Context, req dto.RegisterRequest) (dt
 }
 
 func (s *userService) Login(ctx context.Context, req dto.LoginRequest) (dto.LoginResponse, error) {
+	cfg := config.GetConfig()
+
 	// Validasi input
 	err := s.validate.Struct(req)
 	if err != nil {
@@ -95,7 +99,7 @@ func (s *userService) Login(ctx context.Context, req dto.LoginRequest) (dto.Logi
 	}
 
 	// 3. Buat JWT token
-	token, err := jwt.GenerateJWT(user)
+	token, err := jwt.NewJWTService(cfg.JWTSecret).GenerateJWT(user)
 	if err != nil {
 		return dto.LoginResponse{}, err
 	}

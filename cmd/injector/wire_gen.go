@@ -4,38 +4,43 @@
 //go:build !wireinject
 // +build !wireinject
 
-package config
+package injector
 
 import (
+	"net/http"
+
+	"github.com/assidik12/go-restfull-api/config"
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/handler"
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/middleware"
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/route"
 	"github.com/assidik12/go-restfull-api/internal/infrastructure"
 	"github.com/assidik12/go-restfull-api/internal/repository/mysql"
+	"github.com/assidik12/go-restfull-api/internal/repository/redis"
 	"github.com/assidik12/go-restfull-api/internal/service"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/wire"
-	"net/http"
 )
 
 // Injectors from injector.go:
 
-func InitializedServer() *http.Server {
-	db := infrastructure.DatabaseConnection()
+func InitializedServer(cfg config.Config) *http.Server {
+	db := infrastructure.DatabaseConnection(cfg)
+	cache := infrastructure.RedisConnection(cfg)
 	userRepository := mysql.NewUserRepository(db)
 	v := _wireValue
 	validate := validator.New(v...)
 	userService := service.NewUserService(userRepository, db, validate)
 	userHandler := handler.NewUserHandler(userService)
 	productRepository := mysql.NewProductRepository(db)
-	productService := service.NewProductService(productRepository, db, validate)
+	productCache := redis.NewProductCacheRepository(cache)
+	productService := service.NewProductService(productRepository, db, productCache, validate)
 	productHandler := handler.NewProductHandler(productService)
 	transactionRepository := mysql.NewTransactionRepository(db)
-	trancationService := service.NewTrancationService(transactionRepository, db, validate, userRepository)
+	trancationService := service.NewTransactionService(transactionRepository, db, validate, userRepository)
 	transactionHandler := handler.NewTransactionHandler(trancationService)
 	router := route.NewRouter(userHandler, productHandler, transactionHandler)
 	authMiddleware := middleware.NewAuthMiddleware(router)
-	server := NewServer(authMiddleware)
+	server := config.NewServer(authMiddleware)
 	return server
 }
 
@@ -49,6 +54,6 @@ var validatorSet = wire.NewSet(validator.New, wire.Value([]validator.Option{}))
 
 var userSet = wire.NewSet(mysql.NewUserRepository, service.NewUserService, handler.NewUserHandler)
 
-var productSet = wire.NewSet(mysql.NewProductRepository, service.NewProductService, handler.NewProductHandler)
+var productSet = wire.NewSet(infrastructure.RedisConnection, redis.NewProductCacheRepository, mysql.NewProductRepository, service.NewProductService, handler.NewProductHandler)
 
-var transactionSet = wire.NewSet(mysql.NewTransactionRepository, service.NewTrancationService, handler.NewTransactionHandler)
+var transactionSet = wire.NewSet(mysql.NewTransactionRepository, service.NewTransactionService, handler.NewTransactionHandler)

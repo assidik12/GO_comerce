@@ -25,7 +25,7 @@ type transactionService struct {
 	UserRepository       mysql.UserRepository
 }
 
-func NewTrancationService(repo mysql.TransactionRepository, DB *sql.DB, validate *validator.Validate, userRepo mysql.UserRepository) TrancationService {
+func NewTransactionService(repo mysql.TransactionRepository, DB *sql.DB, validate *validator.Validate, userRepo mysql.UserRepository) TrancationService {
 
 	return &transactionService{
 		TrancationRepository: repo,
@@ -89,6 +89,7 @@ func (t *transactionService) Save(ctx context.Context, transaction dto.Transacti
 		Transaction_detail_id: "abc",
 		Total_Price:           transaction.TotalPrice,
 	}
+
 	tx, err := t.DB.Begin()
 	if err != nil {
 		return domain.Transaction{}, err

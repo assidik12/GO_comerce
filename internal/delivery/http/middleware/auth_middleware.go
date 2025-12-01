@@ -1,17 +1,24 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
-	"os"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/assidik12/go-restfull-api/internal/pkg/jwt"
 	"github.com/julienschmidt/httprouter"
 )
 
 type AuthMiddleware struct {
 	Handler http.Handler
 }
+
+type contextKey string
+
+const (
+	UserIDKey contextKey = "user_id"
+	RoleKey   contextKey = "role"
+)
 
 func NewAuthMiddleware(handler http.Handler) *AuthMiddleware {
 	return &AuthMiddleware{Handler: handler}
@@ -21,11 +28,10 @@ func (middleware AuthMiddleware) ServeHTTP(writer http.ResponseWriter, request *
 	middleware.Handler.ServeHTTP(writer, request)
 }
 
-func (middleware AuthMiddleware) Middleware(role string, next httprouter.Handle) httprouter.Handle {
+func (middleware AuthMiddleware) Middleware(role string, next httprouter.Handle, key string) httprouter.Handle {
 
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		var key string = os.Getenv("AUTH_SECRET_KEY")
-		var jwtKey = []byte(key)
+
 		authHeader := r.Header.Get("Authorization")
 
 		if authHeader == "" {
@@ -40,29 +46,20 @@ func (middleware AuthMiddleware) Middleware(role string, next httprouter.Handle)
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			return jwtKey, nil
-		})
+		claims, err := jwt.NewJWTService(key).ValidateToken(tokenString)
 
-		if err != nil || !token.Valid {
+		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-
-		if !ok {
-			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
-			return
-		}
-
-		if !isRoleAllowed(claims["role"].(string), role) {
+		if !isRoleAllowed(claims.Role, role) {
 			http.Error(w, "Forbidden: You don't have permission to access this resource", http.StatusForbidden)
 			return
 		}
-		w.Header().Add("role", claims["role"].(string))
-		w.Header().Add("user_id", claims["user_id"].(string))
-		next(w, r, ps)
+		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+
+		next(w, r.WithContext(ctx), ps)
 	}
 
 }

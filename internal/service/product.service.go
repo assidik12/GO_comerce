@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/dto"
 	"github.com/assidik12/go-restfull-api/internal/domain"
 	"github.com/assidik12/go-restfull-api/internal/repository/mysql"
+	"github.com/assidik12/go-restfull-api/internal/repository/redis"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -21,13 +23,15 @@ type ProductService interface {
 type productService struct {
 	ProductRepository mysql.ProductRepository
 	DB                *sql.DB
+	Cache             redis.ProductCacheRepository
 	Validator         *validator.Validate
 }
 
-func NewProductService(repo mysql.ProductRepository, DB *sql.DB, validate *validator.Validate) ProductService {
+func NewProductService(repo mysql.ProductRepository, DB *sql.DB, cache redis.ProductCacheRepository, validate *validator.Validate) ProductService {
 	return &productService{
 		ProductRepository: repo,
 		DB:                DB,
+		Cache:             cache,
 		Validator:         validate,
 	}
 }
@@ -67,9 +71,21 @@ func (p *productService) GetAllProducts(ctx context.Context) ([]domain.Product, 
 
 // GetProductById implements ProductService.
 func (p *productService) GetProductById(ctx context.Context, id int) (domain.Product, error) {
-	product, err := p.ProductRepository.FindById(ctx, id)
+	if id <= 0 {
+		return domain.Product{}, errors.New("invalid product id")
+	}
+
+	product, err := p.Cache.FindById(ctx, id)
+
 	if err != nil {
-		return domain.Product{}, err
+		product, err = p.ProductRepository.FindById(ctx, id)
+		if err != nil {
+			return domain.Product{}, err
+		}
+		_, err = p.Cache.Save(ctx, product, id)
+		if err != nil {
+			return domain.Product{}, err
+		}
 	}
 
 	return product, nil

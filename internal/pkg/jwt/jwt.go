@@ -2,36 +2,47 @@ package jwt
 
 import (
 	"errors"
-	"os"
 	"time"
 
 	"github.com/assidik12/go-restfull-api/internal/domain"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// CustomClaims adalah struct untuk data yang ingin kita simpan di dalam token.
+type JWTService interface {
+	GenerateJWT(user domain.User) (string, error)
+	ValidateToken(tokenString string) (*CustomClaims, error)
+}
+
+type jwtService struct {
+	secretKey string
+	issuer    string
+}
+
+func NewJWTService(secretKey string) JWTService {
+	return &jwtService{
+		secretKey: secretKey,
+		issuer:    "go-restfull-api",
+	}
+}
+
 type CustomClaims struct {
 	UserID int    `json:"user_id"`
 	Email  string `json:"email"`
 	Name   string `json:"name"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-// GenerateJWT membuat token baru untuk user.
-// Ia menerima ID dan email user sebagai input untuk dimasukkan ke dalam claims.
-func GenerateJWT(user domain.User) (string, error) {
-	// Ambil secret key dari environment variable.
-	// PASTIKAN ANDA SUDAH MENETAPKAN JWT_SECRET DI FILE .env ANDA.
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		return "", errors.New("JWT_SECRET environment variable not set")
-	}
+// GenerateJWT implements JWTService.
+func (j *jwtService) GenerateJWT(user domain.User) (string, error) {
 
 	claims := CustomClaims{
 		UserID: user.ID,
 		Email:  user.Email,
 		Name:   user.Name,
+		Role:   user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    j.issuer,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
@@ -42,7 +53,7 @@ func GenerateJWT(user domain.User) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	// Tandatangani token dengan secret key Anda.
-	signedToken, err := token.SignedString([]byte(jwtSecret))
+	signedToken, err := token.SignedString([]byte(j.secretKey))
 	if err != nil {
 		return "", err
 	}
@@ -50,18 +61,14 @@ func GenerateJWT(user domain.User) (string, error) {
 	return signedToken, nil
 }
 
-// ValidateJWT memvalidasi token yang diberikan dan mengembalikan claims jika valid.
-func ValidateJWT(tokenString string) (*CustomClaims, error) {
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		return nil, errors.New("JWT_SECRET environment variable not set")
-	}
+// ValidateToken implements JWTService.
+func (j *jwtService) ValidateToken(tokenString string) (*CustomClaims, error) {
 
 	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
 		}
-		return []byte(jwtSecret), nil
+		return []byte(j.secretKey), nil
 	})
 
 	if err != nil {
