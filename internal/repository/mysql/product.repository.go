@@ -8,7 +8,7 @@ import (
 )
 
 type ProductRepository interface {
-	GetAll(ctx context.Context) ([]domain.Product, error)
+	GetAll(ctx context.Context, page int, pageSize int) ([]domain.Product, error)
 	Save(ctx context.Context, product domain.Product) (domain.Product, error)
 	FindById(ctx context.Context, id int) (domain.Product, error)
 	Update(ctx context.Context, product domain.Product) (domain.Product, error)
@@ -49,10 +49,11 @@ func (p *productRepository) FindById(ctx context.Context, id int) (domain.Produc
 }
 
 // GetAll implements ProductRepository.
-func (p *productRepository) GetAll(ctx context.Context) ([]domain.Product, error) {
-	q := "SELECT * FROM products"
+func (p *productRepository) GetAll(ctx context.Context, page int, pageSize int) ([]domain.Product, error) {
+	offset := (page - 1) * pageSize
+	query := "SELECT id, name, price, stock, description, img, category_id FROM products LIMIT ? OFFSET ?"
 
-	rows, err := p.db.Query(q)
+	rows, err := p.db.QueryContext(ctx, query, pageSize, offset)
 	if err != nil {
 		return nil, err
 	}

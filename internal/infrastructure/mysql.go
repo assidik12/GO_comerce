@@ -12,7 +12,7 @@ import (
 
 func DatabaseConnection(c config.Config) *sql.DB {
 
-	DB, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True",
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True",
 		c.DBUser,
 		c.DBPassword,
 		c.DBHost,
@@ -25,7 +25,7 @@ func DatabaseConnection(c config.Config) *sql.DB {
 	}
 	fmt.Println("connecting to database...")
 
-	err = DB.Ping()
+	err = db.Ping()
 
 	if err != nil {
 		log.Fatal(err)
@@ -34,10 +34,10 @@ func DatabaseConnection(c config.Config) *sql.DB {
 
 	fmt.Println("connection to database success...")
 
-	DB.SetMaxIdleConns(5)
-	DB.SetMaxOpenConns(10)
-	DB.SetConnMaxIdleTime(10 * time.Minute)
-	DB.SetConnMaxLifetime(60 * time.Minute)
+	db.SetMaxIdleConns(5)
+	db.SetMaxOpenConns(10)
+	db.SetConnMaxIdleTime(10 * time.Minute)
+	db.SetConnMaxLifetime(60 * time.Minute)
 
-	return DB
+	return db
 }

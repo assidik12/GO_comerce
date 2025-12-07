@@ -20,11 +20,36 @@ func NewProductHandler(service service.ProductService) *ProductHandler {
 }
 
 func (ph *ProductHandler) GetAllProducts(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	products, err := ph.service.GetAllProducts(r.Context())
-	if err != nil {
-		response.NotFound(w, err.Error())
+	// 1. Baca query parameter 'page'
+	pageStr := r.URL.Query().Get("page")
+	if pageStr == "" {
+		pageStr = "1" // Default ke halaman 1 jika tidak ada
+	}
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		response.BadRequest(w, "Invalid page parameter")
 		return
 	}
+
+	// 2. Baca query parameter 'pageSize'
+	pageSizeStr := r.URL.Query().Get("pageSize")
+	if pageSizeStr == "" {
+		pageSizeStr = "10" // Default ke 10 item per halaman
+	}
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize < 1 {
+		response.BadRequest(w, "Invalid pageSize parameter")
+		return
+	}
+
+	// 3. Panggil service dengan parameter paginasi
+	products, err := ph.service.GetAllProducts(r.Context(), page, pageSize)
+	if err != nil {
+		// Gunakan InternalServerError karena error dari service/repo lebih mungkin masalah server
+		response.InternalServerError(w, err.Error())
+		return
+	}
+
 	response.OK(w, products)
 }
 

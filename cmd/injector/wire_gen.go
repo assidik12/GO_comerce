@@ -7,41 +7,45 @@
 package injector
 
 import (
-	"net/http"
-
 	"github.com/assidik12/go-restfull-api/config"
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/handler"
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/middleware"
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/route"
+	"github.com/assidik12/go-restfull-api/internal/event"
 	"github.com/assidik12/go-restfull-api/internal/infrastructure"
 	"github.com/assidik12/go-restfull-api/internal/repository/mysql"
 	"github.com/assidik12/go-restfull-api/internal/repository/redis"
 	"github.com/assidik12/go-restfull-api/internal/service"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/wire"
+	"net/http"
 )
 
 // Injectors from injector.go:
 
-func InitializedServer(cfg config.Config) *http.Server {
+// Hapus parameter cache.Wrapper dari sini, biarkan Wire yang buat
+func InitializedServer(cfg config.Config) (*http.Server, func(), error) {
 	db := infrastructure.DatabaseConnection(cfg)
-	cache := infrastructure.RedisConnection(cfg)
 	userRepository := mysql.NewUserRepository(db)
 	v := _wireValue
 	validate := validator.New(v...)
 	userService := service.NewUserService(userRepository, db, validate)
 	userHandler := handler.NewUserHandler(userService)
 	productRepository := mysql.NewProductRepository(db)
-	productCache := redis.NewProductCacheRepository(cache)
-	productService := service.NewProductService(productRepository, db, productCache, validate)
+	client := infrastructure.RedisConnection(cfg)
+	wrapper := redis.NewWrapper(client)
+	productService := service.NewProductService(productRepository, db, wrapper, validate)
 	productHandler := handler.NewProductHandler(productService)
 	transactionRepository := mysql.NewTransactionRepository(db)
-	trancationService := service.NewTransactionService(transactionRepository, db, validate, userRepository)
+	writer := infrastructure.NewKafkaWriter(cfg)
+	kafkaProducer := event.NewKafkaProducer(writer)
+	trancationService := service.NewTransactionService(transactionRepository, db, validate, userRepository, kafkaProducer)
 	transactionHandler := handler.NewTransactionHandler(trancationService)
 	router := route.NewRouter(userHandler, productHandler, transactionHandler)
 	authMiddleware := middleware.NewAuthMiddleware(router)
 	server := config.NewServer(authMiddleware)
-	return server
+	return server, func() {
+	}, nil
 }
 
 var (
@@ -52,8 +56,11 @@ var (
 
 var validatorSet = wire.NewSet(validator.New, wire.Value([]validator.Option{}))
 
+// Setup Kafka (Pastikan file infrastructure/kafka.go dan event/kafka_producer.go sudah dibuat)
+var eventSet = wire.NewSet(infrastructure.NewKafkaWriter, event.NewKafkaProducer, wire.Bind(new(event.Producer), new(*event.KafkaProducer)))
+
 var userSet = wire.NewSet(mysql.NewUserRepository, service.NewUserService, handler.NewUserHandler)
 
-var productSet = wire.NewSet(infrastructure.RedisConnection, redis.NewProductCacheRepository, mysql.NewProductRepository, service.NewProductService, handler.NewProductHandler)
+var productSet = wire.NewSet(mysql.NewProductRepository, service.NewProductService, handler.NewProductHandler)
 
 var transactionSet = wire.NewSet(mysql.NewTransactionRepository, service.NewTransactionService, handler.NewTransactionHandler)

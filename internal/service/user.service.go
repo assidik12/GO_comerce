@@ -9,6 +9,7 @@ import (
 	"github.com/assidik12/go-restfull-api/config"
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/dto"
 	"github.com/assidik12/go-restfull-api/internal/domain"
+	"github.com/assidik12/go-restfull-api/internal/pkg/hash"
 	"github.com/assidik12/go-restfull-api/internal/pkg/jwt"
 	"github.com/assidik12/go-restfull-api/internal/repository/mysql"
 	"github.com/go-playground/validator/v10"
@@ -44,7 +45,7 @@ func (s *userService) Register(ctx context.Context, req dto.RegisterRequest) (dt
 		return dto.UserResponse{}, errors.New("invalid input data")
 	}
 	// 1. Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := hash.NewCryptoHasher(bcrypt.DefaultCost).HashPassword(req.Password)
 	if err != nil {
 		return dto.UserResponse{}, err
 	}
@@ -92,7 +93,7 @@ func (s *userService) Login(ctx context.Context, req dto.LoginRequest) (dto.Logi
 	}
 
 	// 2. Bandingkan password yang di-hash dengan password dari request
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password))
+	err = hash.NewCryptoHasher(bcrypt.DefaultCost).ComparePassword(user.Password, req.Password)
 	if err != nil {
 		// Jika error, kemungkinan besar password tidak cocok
 		return dto.LoginResponse{}, errors.New("invalid email or password")

@@ -23,9 +23,6 @@ func NewTransactionRepository(db *sql.DB) TransactionRepository {
 	return &transactionRepository{db: db}
 }
 
-// Save sekarang menggunakan *sql.Tx yang harus di-pass dari Service layer.
-// Ini memastikan bahwa penyimpanan ke tabel transactions dan transaction_details
-// berada dalam satu transaksi yang sama.
 func (t *transactionRepository) Save(ctx context.Context, tx *sql.Tx, transaction domain.Transaction) (domain.Transaction, error) {
 	// 1. Simpan ke tabel utama `transactions`
 	qMaster := "INSERT INTO transactions (user_id, transaction_detail_id, total_price) VALUES (?, ?, ?)"

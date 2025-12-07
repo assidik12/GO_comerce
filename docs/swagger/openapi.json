@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Go E-Commerce REST API",
-    "description": "API untuk aplikasi E-Commerce sederhana",
+    "description": "API untuk aplikasi E-Commerce sederhana dengan caching dan event-driven architecture",
     "version": "1.0.0"
   },
   "servers": [
@@ -21,10 +21,22 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["name", "email", "password"],
                 "properties": {
-                  "name": { "type": "string" },
-                  "email": { "type": "string" },
-                  "password": { "type": "string" }
+                  "name": {
+                    "type": "string",
+                    "example": "John Doe"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 6,
+                    "example": "password123"
+                  }
                 }
               }
             }
@@ -38,15 +50,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/auth"
-                    }
+                    "code": { "type": "number", "example": 200 },
+                    "status": { "type": "string", "example": "OK" },
+                    "data": { "$ref": "#/components/schemas/auth" }
                   }
                 }
               }
@@ -57,15 +63,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  }
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -75,15 +73,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  }
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -102,9 +92,17 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["email", "password"],
                 "properties": {
-                  "email": { "type": "string" },
-                  "password": { "type": "string" }
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "password123"
+                  }
                 }
               }
             }
@@ -118,15 +116,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/auth"
-                    }
+                    "code": { "type": "number", "example": 200 },
+                    "status": { "type": "string", "example": "OK" },
+                    "data": { "$ref": "#/components/schemas/auth" }
                   }
                 }
               }
@@ -137,14 +129,23 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                },
+                "example": {
+                  "code": 401,
+                  "status": "UNAUTHORIZED",
+                  "data": {
+                    "error": "Invalid email or password"
                   }
                 }
               }
@@ -155,33 +156,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  }
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -191,18 +166,41 @@
     },
     "/products": {
       "get": {
-        "security": [
+        "security": [{ "productauth": [] }],
+        "tags": ["product api"],
+        "summary": "get all products with pagination",
+        "description": "Get paginated list of products. Data is cached in Redis for 10 minutes.",
+        "operationId": "getAllProducts",
+        "parameters": [
           {
-            "productauth": []
+            "name": "page",
+            "in": "query",
+            "description": "Page number (starts from 1)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "example": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "Number of items per page",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10,
+              "example": 10
+            }
           }
         ],
-        "tags": ["product api"],
-        "summary": "get all products",
-        "description": "get all products",
-        "operationId": "getAllProducts",
         "responses": {
           "200": {
-            "description": "ok",
+            "description": "Successfully retrieved products",
             "content": {
               "application/json": {
                 "schema": {
@@ -213,7 +211,8 @@
                       "example": 200
                     },
                     "status": {
-                      "type": "string"
+                      "type": "string",
+                      "example": "OK"
                     },
                     "data": {
                       "type": "array",
@@ -222,6 +221,74 @@
                       }
                     }
                   }
+                },
+                "example": {
+                  "code": 200,
+                  "status": "OK",
+                  "data": [
+                    {
+                      "id": 1,
+                      "name": "Laptop",
+                      "price": 15000000,
+                      "description": "High performance laptop",
+                      "category_id": 1,
+                      "img": "https://example.com/laptop.jpg"
+                    },
+                    {
+                      "id": 2,
+                      "name": "Mouse",
+                      "price": 150000,
+                      "description": "Wireless mouse",
+                      "category_id": 2,
+                      "img": "https://example.com/mouse.jpg"
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "X-Cache-Status": {
+                "description": "Indicates whether data was served from cache",
+                "schema": {
+                  "type": "string",
+                  "enum": ["HIT", "MISS"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pagination parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                },
+                "example": {
+                  "code": 400,
+                  "status": "BAD REQUEST",
+                  "data": {
+                    "error": "Invalid page parameter"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -229,11 +296,7 @@
         }
       },
       "post": {
-        "security": [
-          {
-            "productauth": []
-          }
-        ],
+        "security": [{ "productauth": [] }],
         "tags": ["product api"],
         "description": "create new product",
         "operationId": "createproduct",
@@ -243,35 +306,77 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["name", "price", "category_id"],
                 "properties": {
-                  "name": { "type": "string" },
-                  "price": { "type": "integer" },
-                  "description": { "type": "string" },
-                  "catagory": { "type": "string" },
-                  "img": { "type": "string" }
+                  "name": {
+                    "type": "string",
+                    "example": "Laptop Gaming"
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 15000000
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "High performance gaming laptop"
+                  },
+                  "category_id": {
+                    "type": "integer",
+                    "example": 1
+                  },
+                  "img": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://example.com/laptop.jpg"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": {
-            "description": "ok",
+          "201": {
+            "description": "Product created successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/product"
-                    }
+                    "code": { "type": "number", "example": 201 },
+                    "status": { "type": "string", "example": "CREATED" },
+                    "data": { "$ref": "#/components/schemas/product" }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -279,45 +384,65 @@
         }
       }
     },
-    "/product/{id}": {
+    "/products/{id}": {
       "get": {
-        "security": [
-          {
-            "productauth": []
-          }
-        ],
+        "security": [{ "productauth": [] }],
         "tags": ["product api"],
         "summary": "get product by id",
-        "description": "get product by id",
-        "operationId": "getCatagoryById",
+        "description": "Get single product by ID. Data is cached in Redis for 10 minutes.",
+        "operationId": "getProductById",
         "parameters": [
           {
-            "name": "idProduct",
+            "name": "id",
             "in": "path",
+            "description": "Product ID",
             "required": true,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "ok",
+            "description": "Product found",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/product"
-                    }
+                    "code": { "type": "number", "example": 200 },
+                    "status": { "type": "string", "example": "OK" },
+                    "data": { "$ref": "#/components/schemas/product" }
                   }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Product not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                },
+                "example": {
+                  "code": 404,
+                  "status": "NOT FOUND",
+                  "data": {
+                    "error": "Product not found"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -325,14 +450,10 @@
         }
       },
       "put": {
-        "security": [
-          {
-            "productauth": []
-          }
-        ],
+        "security": [{ "productauth": [] }],
         "tags": ["product api"],
         "summary": "update product by id",
-        "description": "update product by id",
+        "description": "Update product and invalidate cache",
         "operationId": "updateProductById",
         "parameters": [
           {
@@ -340,7 +461,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "example": 1
             }
           }
         ],
@@ -351,10 +473,10 @@
                 "type": "object",
                 "properties": {
                   "name": { "type": "string" },
-                  "price": { "type": "integer" },
+                  "price": { "type": "integer", "minimum": 0 },
                   "description": { "type": "string" },
-                  "catagory": { "type": "string" },
-                  "img": { "type": "string" }
+                  "category_id": { "type": "integer" },
+                  "img": { "type": "string", "format": "uri" }
                 }
               }
             }
@@ -362,22 +484,26 @@
         },
         "responses": {
           "200": {
-            "description": "ok",
+            "description": "Product updated successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/product"
-                    }
+                    "code": { "type": "number", "example": 200 },
+                    "status": { "type": "string", "example": "OK" },
+                    "data": { "$ref": "#/components/schemas/product" }
                   }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Product not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -385,54 +511,52 @@
         }
       },
       "delete": {
-        "security": [
-          {
-            "productauth": []
-          }
-        ],
+        "security": [{ "productauth": [] }],
         "tags": ["product api"],
         "summary": "delete product by id",
-        "description": "delete product by id",
-        "operationId": "deleteproductById",
+        "description": "Delete product and invalidate cache",
+        "operationId": "deleteProductById",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "example": 1
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
-            "description": "ok",
+            "description": "Product deleted successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
+                    "code": { "type": "number", "example": 200 },
+                    "status": { "type": "string", "example": "OK" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string",
+                          "example": "Product deleted successfully"
+                        }
+                      }
                     }
                   }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Product not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -440,44 +564,25 @@
         }
       }
     },
-    "/transactions/{userId}": {
+    "/transactions": {
       "post": {
-        "security": [
-          {
-            "transactionauth": ["user", "admin"]
-          }
-        ],
-        "parameters": [
-          {
-            "name": "userId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
+        "security": [{ "transactionauth": [] }],
         "tags": ["transaction api"],
         "summary": "create new transaction",
-        "description": "create new transaction",
+        "description": "Create transaction and publish event to Kafka",
         "operationId": "createTransaction",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["total_price"],
                 "properties": {
-                  "paymentMethod": { "type": "string" },
-                  "totalPrice": { "type": "integer" },
-                  "products": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "id": { "type": "integer" },
-                        "qty": { "type": "integer" }
-                      }
-                    }
+                  "total_price": {
+                    "type": "number",
+                    "format": "float",
+                    "minimum": 0,
+                    "example": 150000.5
                   }
                 }
               }
@@ -485,38 +590,37 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "ok",
+          "201": {
+            "description": "Transaction created and event published to Kafka",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
+                    "code": { "type": "number", "example": 201 },
+                    "status": { "type": "string", "example": "CREATED" },
+                    "data": { "$ref": "#/components/schemas/transaction" }
                   }
                 }
               }
             }
           },
           "400": {
-            "description": "bad request",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  }
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -524,29 +628,21 @@
         }
       },
       "get": {
-        "security": [
-          {
-            "transactionauth": ["user", "admin"]
-          }
-        ],
+        "security": [{ "transactionauth": [] }],
         "tags": ["transaction api"],
-        "summary": "get all transaction",
-        "description": "get all transaction",
-        "operationId": "getAllTransaction",
+        "summary": "get all user transactions",
+        "description": "Get all transactions for authenticated user",
+        "operationId": "getAllTransactions",
         "responses": {
           "200": {
-            "description": "ok",
+            "description": "Successfully retrieved transactions",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
+                    "code": { "type": "number", "example": 200 },
+                    "status": { "type": "string", "example": "OK" },
                     "data": {
                       "type": "array",
                       "items": {
@@ -557,18 +653,71 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions/{id}": {
+      "get": {
+        "security": [{ "transactionauth": [] }],
+        "tags": ["transaction api"],
+        "summary": "get transaction by id",
+        "description": "Get single transaction details",
+        "operationId": "getTransactionById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "number", "example": 200 },
+                    "status": { "type": "string", "example": "OK" },
+                    "data": { "$ref": "#/components/schemas/transaction" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
           }
         }
       },
       "delete": {
-        "security": [
-          {
-            "transactionauth": ["user", "admin"]
-          }
-        ],
+        "security": [{ "transactionauth": [] }],
         "tags": ["transaction api"],
         "summary": "delete transaction by id",
-        "description": "delete transaction by id",
+        "description": "Delete transaction",
         "operationId": "deleteTransactionById",
         "parameters": [
           {
@@ -576,25 +725,32 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "example": 1
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "ok",
+            "description": "Transaction deleted",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "code": {
-                      "type": "number"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
+                    "code": { "type": "number", "example": 200 },
+                    "status": { "type": "string", "example": "OK" }
                   }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
                 }
               }
             }
@@ -606,52 +762,67 @@
   "components": {
     "securitySchemes": {
       "userauth": {
-        "type": "apiKey",
-        "name": "Authorization",
-        "in": "header",
-        "description": "Enter user auth token"
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter JWT token (without 'Bearer' prefix)"
       },
       "productauth": {
-        "type": "apiKey",
-        "name": "Authorization",
-        "in": "header",
-        "description": "Enter product auth token"
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter JWT token for product operations"
       },
       "transactionauth": {
-        "type": "apiKey",
-        "name": "Authorization",
-        "in": "header",
-        "description": "Enter transaction auth token"
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter JWT token for transaction operations"
       }
     },
     "schemas": {
       "auth": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "email": { "type": "string" },
-          "password": { "type": "string" },
-          "role": { "type": "string" }
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "John Doe" },
+          "email": { "type": "string", "format": "email", "example": "john@example.com" },
+          "token": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." },
+          "role": { "type": "string", "enum": ["user", "admin"], "example": "user" }
         }
       },
       "product": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "price": { "type": "integer" },
-          "description": { "type": "string" },
-          "catagory": { "type": "string" },
-          "img": { "type": "string" }
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "Laptop Gaming" },
+          "price": { "type": "integer", "example": 15000000 },
+          "description": { "type": "string", "example": "High performance gaming laptop" },
+          "category_id": { "type": "integer", "example": 1 },
+          "img": { "type": "string", "format": "uri", "example": "https://example.com/laptop.jpg" }
         }
       },
       "transaction": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "product_id": { "type": "integer" },
-          "quantity": { "type": "integer" }
+          "id": { "type": "integer", "example": 1 },
+          "user_id": { "type": "integer", "example": 1 },
+          "transaction_detail_id": { "type": "string", "format": "uuid", "example": "a8a6e3a8-c2dc-4e0a-8b9c-1b9f2b3d4e5f" },
+          "total_price": { "type": "number", "format": "float", "example": 150000.5 },
+          "created_at": { "type": "string", "format": "date-time", "example": "2024-12-07T10:30:00Z" }
+        }
+      },
+      "errorResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 400 },
+          "status": { "type": "string", "example": "BAD REQUEST" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "error": { "type": "string", "example": "Validation error" }
+            }
+          }
         }
       }
     }

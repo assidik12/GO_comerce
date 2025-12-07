@@ -7,8 +7,10 @@ import (
 
 	"github.com/assidik12/go-restfull-api/internal/delivery/http/dto"
 	"github.com/assidik12/go-restfull-api/internal/domain"
+	"github.com/assidik12/go-restfull-api/internal/event"
 	"github.com/assidik12/go-restfull-api/internal/repository/mysql"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 )
 
 type TrancationService interface {
@@ -23,14 +25,17 @@ type transactionService struct {
 	DB                   *sql.DB
 	Validator            *validator.Validate
 	UserRepository       mysql.UserRepository
+	producer             event.Producer
 }
 
-func NewTransactionService(repo mysql.TransactionRepository, DB *sql.DB, validate *validator.Validate, userRepo mysql.UserRepository) TrancationService {
+func NewTransactionService(repo mysql.TransactionRepository, DB *sql.DB, validate *validator.Validate, userRepo mysql.UserRepository, producer event.Producer) TrancationService {
 
 	return &transactionService{
 		TrancationRepository: repo,
 		DB:                   DB,
 		Validator:            validate,
+		UserRepository:       userRepo,
+		producer:             producer,
 	}
 }
 
@@ -78,19 +83,29 @@ func (t *transactionService) GetAll(ctx context.Context, idUser int) ([]domain.T
 func (t *transactionService) Save(ctx context.Context, transaction dto.TransactionRequest, idUser int) (domain.Transaction, error) {
 	user, err := t.UserRepository.FindById(ctx, idUser)
 	if err != nil {
-		return domain.Transaction{}, err
-	}
-	if user.ID == 0 {
 		return domain.Transaction{}, errors.New("user not found")
 	}
+
+	transactionDetailID := uuid.NewString()
+
+	// map dto products to domain.TransactionDetail
+	products := make([]domain.TransactionDetail, 0, len(transaction.Products))
+	for _, p := range transaction.Products {
+		products = append(products, domain.TransactionDetail{
+			Product_id: p.ID,
+			Quantyty:   p.Qty,
+		})
+	}
+
 	transactionToSave := domain.Transaction{
-		ID:                    0,
 		User_id:               user.ID,
-		Transaction_detail_id: "abc",
+		Transaction_detail_id: transactionDetailID,
 		Total_Price:           transaction.TotalPrice,
+		Products:              products,
 	}
 
 	tx, err := t.DB.Begin()
+
 	if err != nil {
 		return domain.Transaction{}, err
 	}
@@ -104,8 +119,6 @@ func (t *transactionService) Save(ctx context.Context, transaction dto.Transacti
 	if err := tx.Commit(); err != nil {
 		return domain.Transaction{}, err
 	}
-	if savedTransaction.ID == 0 {
-		return domain.Transaction{}, errors.New("transaction not saved")
-	}
+
 	return savedTransaction, nil
 }

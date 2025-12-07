@@ -19,6 +19,8 @@ type Config struct {
 	RedisHost     string `mapstructure:"REDIS_HOST"`
 	RedisPort     string `mapstructure:"REDIS_PORT"`
 	RedisPassword string `mapstructure:"REDIS_PASSWORD"`
+	KafkaHost     string `mapstructure:"KAFKA_HOST"`
+	KafkaPort     string `mapstructure:"KAFKA_PORT"`
 }
 
 // cfg adalah instance singleton dari Config.
