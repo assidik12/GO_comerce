@@ -18,6 +18,7 @@ import (
 	mysql "github.com/assidik12/catalyst/internal/repository/mysql"
 	redis "github.com/assidik12/catalyst/internal/repository/redis"
 	service "github.com/assidik12/catalyst/internal/service"
+	"github.com/assidik12/catalyst/internal/worker"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/wire"
 	"github.com/julienschmidt/httprouter"
@@ -27,6 +28,15 @@ var validatorSet = wire.NewSet(
 	validator.New,
 	wire.Value([]validator.Option{}),
 )
+
+type App struct {
+	Server *http.Server
+	Relay  worker.OutboxRelay
+}
+
+func NewApp(server *http.Server, relay worker.OutboxRelay) App {
+	return App{Server: server, Relay: relay}
+}
 
 // Setup Kafka
 var eventSet = wire.NewSet(
@@ -47,6 +57,11 @@ var productSet = wire.NewSet(
 	handler.NewProductHandler,
 )
 
+var outboxSet = wire.NewSet(
+	mysql.NewOutboxRepository,
+	worker.NewOutboxRelay,
+)
+
 var transactionSet = wire.NewSet(
 	mysql.NewTransactionRepository,
 	service.NewTransactionService,
@@ -63,7 +78,7 @@ func ExtractJwtSecret(cfg config.Config) string {
 	return cfg.JWTSecret
 }
 
-func InitializedServer(cfg config.Config) (*http.Server, func(), error) {
+func InitializedServer(cfg config.Config) (App, func(), error) {
 	wire.Build(
 		// 1. Infrastructure (Singletons)
 		infrastructure.DatabaseConnection,
@@ -79,6 +94,7 @@ func InitializedServer(cfg config.Config) (*http.Server, func(), error) {
 		eventSet,
 		userSet,
 		productSet,
+		outboxSet,
 		transactionSet,
 
 		// 4. HTTP & Routing
@@ -86,6 +102,9 @@ func InitializedServer(cfg config.Config) (*http.Server, func(), error) {
 		wire.Bind(new(http.Handler), new(*httprouter.Router)),
 		middleware.NewAuthMiddleware,
 		config.NewServer,
+
+		// 5. App entry
+		NewApp,
 	)
-	return nil, nil, nil
+	return App{}, nil, nil
 }

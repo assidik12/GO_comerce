@@ -1,8 +1,8 @@
 # =================
 # Tahap 1: Builder
 # =================
-# Menggunakan base image Go versi 1.24-alpine untuk proses build.
-FROM golang:1.24-alpine AS builder
+# Menggunakan base image Go versi 1.25-alpine untuk proses build.
+FROM golang:1.25-alpine AS builder
 
 LABEL maintainer="Ahmad Sofi Sidik <github.com/assidik12>"
 

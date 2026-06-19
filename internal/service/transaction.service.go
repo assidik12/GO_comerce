@@ -3,13 +3,16 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/assidik12/catalyst/internal/delivery/http/dto"
 	"github.com/assidik12/catalyst/internal/domain"
 	"github.com/assidik12/catalyst/internal/event"
+	"github.com/go-sql-driver/mysql"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
@@ -26,6 +29,7 @@ type transactionService struct {
 	repo        domain.TransactionRepository
 	userRepo    domain.UserRepository
 	productRepo domain.ProductRepository
+	outboxRepo  domain.OutboxRepository
 	DB          *sql.DB
 	validator   *validator.Validate
 	producer    event.Producer
@@ -38,6 +42,7 @@ func NewTransactionService(
 	validate *validator.Validate,
 	userRepo domain.UserRepository,
 	productRepo domain.ProductRepository,
+	outboxRepo domain.OutboxRepository,
 	producer event.Producer,
 	logger *slog.Logger,
 ) TransactionService {
@@ -45,6 +50,7 @@ func NewTransactionService(
 		repo:        repo,
 		userRepo:    userRepo,
 		productRepo: productRepo,
+		outboxRepo:  outboxRepo,
 		DB:          DB,
 		validator:   validate,
 		producer:    producer,
@@ -125,23 +131,25 @@ func (t *transactionService) Save(ctx context.Context, transaction dto.Transacti
 	}
 
 	transactionToSave := domain.Transaction{
-		ID:         uuid.NewString(), // Use UUID as primary key string
-		UserID:     user.ID,
-		TotalPrice: totalPrice,
-		CreatedAt:  time.Now(),
-		Products:   domainProducts,
+		ID:             uuid.NewString(), // Use UUID as primary key string
+		UserID:         user.ID,
+		TotalPrice:     totalPrice,
+		IdempotencyKey: transaction.IdempotencyKey,
+		CreatedAt:      time.Now(),
+		Products:       domainProducts,
 	}
 
 	savedTransaction, err := t.repo.Save(ctx, tx, transactionToSave)
 	if err != nil {
+		if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == 1062 {
+			if strings.Contains(mysqlErr.Message, "idempotency_key") {
+				return domain.Transaction{}, fmt.Errorf("%w: idempotency key already exists", domain.ErrConflict)
+			}
+		}
 		return domain.Transaction{}, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return domain.Transaction{}, err
-	}
-
-	// 3. Publish Event asynchronously
+	// 4. Save Event to Outbox (within same DB transaction)
 	orderEvent := event.OrderCreatedEvent{
 		TransactionID: savedTransaction.ID,
 		UserID:        savedTransaction.UserID,
@@ -149,22 +157,25 @@ func (t *transactionService) Save(ctx context.Context, transaction dto.Transacti
 		Products:      eventProducts,
 		CreatedAt:     savedTransaction.CreatedAt,
 	}
+	
+	payload, _ := json.Marshal(orderEvent)
+	outboxEvent := domain.OutboxEvent{
+		ID:            uuid.NewString(),
+		AggregateType: "Transaction",
+		AggregateID:   savedTransaction.ID,
+		Topic:         event.TopicOrderCreated,
+		Payload:       payload,
+		Status:        domain.OutboxStatusPending,
+		CreatedAt:     time.Now(),
+	}
 
-	go func() {
-		pubCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+	if err := t.outboxRepo.Save(ctx, tx, outboxEvent); err != nil {
+		return domain.Transaction{}, fmt.Errorf("failed to save outbox event: %w", err)
+	}
 
-		if err := t.producer.Publish(pubCtx, event.TopicOrderCreated, orderEvent); err != nil {
-			t.logger.Error("failed to publish order event",
-				"transaction_id", orderEvent.TransactionID,
-				"error", err,
-			)
-		} else {
-			t.logger.Info("successfully published order event",
-				"transaction_id", orderEvent.TransactionID,
-			)
-		}
-	}()
+	if err := tx.Commit(); err != nil {
+		return domain.Transaction{}, err
+	}
 
 	return savedTransaction, nil
 }

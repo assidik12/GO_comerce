@@ -87,6 +87,8 @@ func (th *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	req.IdempotencyKey = r.Header.Get("Idempotency-Key")
+
 	transaction, err := th.service.Save(r.Context(), req, userID)
 	if err != nil {
 		th.handleServiceError(w, err)

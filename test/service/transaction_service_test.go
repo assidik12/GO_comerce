@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"os"
 	"testing"
@@ -11,11 +12,15 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/assidik12/catalyst/internal/delivery/http/dto"
 	"github.com/assidik12/catalyst/internal/domain"
+	"github.com/assidik12/catalyst/internal/event"
 	"github.com/assidik12/catalyst/internal/service"
+	gomysql "github.com/go-sql-driver/mysql"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+// ─── Mocks ───────────────────────────────────────────────────────────────────
 
 type MockUserRepo struct {
 	mock.Mock
@@ -69,16 +74,50 @@ func (m *MockProducer) Publish(ctx context.Context, topic string, data any) erro
 	return args.Error(0)
 }
 
-func setupTransactionServiceTesting(t *testing.T) (*MockTransactionRepo, *MockProductRepo, *MockUserRepo, *MockProducer, service.TransactionService, sqlmock.Sqlmock) {
+// MockOutboxRepo implements domain.OutboxRepository
+type MockOutboxRepo struct {
+	mock.Mock
+}
+
+func (m *MockOutboxRepo) Save(ctx context.Context, tx *sql.Tx, e domain.OutboxEvent) error {
+	args := m.Called(ctx, tx, e)
+	return args.Error(0)
+}
+
+func (m *MockOutboxRepo) FindPending(ctx context.Context, limit int) ([]domain.OutboxEvent, error) {
+	args := m.Called(ctx, limit)
+	return args.Get(0).([]domain.OutboxEvent), args.Error(1)
+}
+
+func (m *MockOutboxRepo) MarkAsProcessed(ctx context.Context, ids []string) error {
+	args := m.Called(ctx, ids)
+	return args.Error(0)
+}
+
+// ─── Setup ───────────────────────────────────────────────────────────────────
+
+func setupTransactionServiceTesting(t *testing.T) (
+	*MockTransactionRepo,
+	*MockProductRepo,
+	*MockUserRepo,
+	*MockOutboxRepo,
+	*MockProducer,
+	service.TransactionService,
+	sqlmock.Sqlmock,
+) {
+	t.Helper()
+
 	mockTransactionRepo := new(MockTransactionRepo)
 	mockProductRepo := new(MockProductRepo)
 	mockUserRepo := new(MockUserRepo)
+	mockOutboxRepo := new(MockOutboxRepo)
 	mockProducer := new(MockProducer)
 
 	db, sqlMock, err := sqlmock.New()
 	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+		t.Fatalf("failed to open stub database: %s", err)
 	}
+	t.Cleanup(func() { db.Close() })
 
 	validate := validator.New()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -89,106 +128,254 @@ func setupTransactionServiceTesting(t *testing.T) (*MockTransactionRepo, *MockPr
 		validate,
 		mockUserRepo,
 		mockProductRepo,
+		mockOutboxRepo,
 		mockProducer,
 		logger,
 	)
 
-	return mockTransactionRepo, mockProductRepo, mockUserRepo, mockProducer, transactionService, sqlMock
+	return mockTransactionRepo, mockProductRepo, mockUserRepo, mockOutboxRepo, mockProducer, transactionService, sqlMock
 }
 
-func TestSaveTransaction_ServerSidePriceCalculation(t *testing.T) {
-	mockTransactionRepo, mockProductRepo, mockUserRepo, mockProducer, transactionService, sqlMock := setupTransactionServiceTesting(t)
+// helper: build a standard saved transaction for mock returns
+func fakeSavedTx(userID int, totalPrice int) domain.Transaction {
+	return domain.Transaction{
+		ID:         "tx-uuid-123",
+		UserID:     userID,
+		TotalPrice: totalPrice,
+		CreatedAt:  time.Now(),
+	}
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+// TestSaveTransaction_HappyPath_OutboxSavedInSameTx verifies:
+//  1. Server calculates total price (ignores client input)
+//  2. outboxRepo.Save() is called within the same *sql.Tx before Commit
+//  3. tx.Commit() is called (not just Rollback)
+func TestSaveTransaction_HappyPath_OutboxSavedInSameTx(t *testing.T) {
+	mockTxRepo, mockProductRepo, mockUserRepo, mockOutboxRepo, _, svc, sqlMock := setupTransactionServiceTesting(t)
 
 	ctx := context.Background()
-	userId := 1
+	userID := 1
+	expectedTotal := 100_000 // 50000 * 2
 
-	// Setup valid user
-	mockUserRepo.On("FindById", mock.Anything, userId).Return(domain.User{ID: userId, Email: "test@example.com"}, nil)
+	mockUserRepo.On("FindById", mock.Anything, userID).
+		Return(domain.User{ID: userID, Email: "test@example.com"}, nil)
+	mockProductRepo.On("FindById", mock.Anything, 101).
+		Return(domain.Product{ID: 101, Name: "Test Item", Price: 50_000, Stock: 50}, nil)
+	mockProductRepo.On("DecrementStock", mock.Anything, mock.AnythingOfType("*sql.Tx"), 101, 2).
+		Return(nil)
 
-	// Setup product with server-side price of 50000.
-	// We ignore whatever price might be inferred from the frontend, ensuring the backend drives pricing.
-	mockProductRepo.On("FindById", mock.Anything, 101).Return(domain.Product{
-		ID:    101,
-		Name:  "Test Item",
-		Price: 50000,
-		Stock: 50,
-	}, nil)
-	mockProductRepo.On("DecrementStock", mock.Anything, mock.AnythingOfType("*sql.Tx"), 101, 2).Return(nil)
-
-	req := dto.TransactionRequest{
-		Products: []dto.TransactionItem{
-			{
-				ProductID: 101,
-				Quantity:  2,
-			},
-		},
-	}
-
-	expectedTotalPrice := 100000 // 50000 * 2
-
-	// Setup DB expectations for the transaction
 	sqlMock.ExpectBegin()
+
+	mockTxRepo.On("Save",
+		mock.Anything,
+		mock.AnythingOfType("*sql.Tx"),
+		mock.MatchedBy(func(tx domain.Transaction) bool {
+			return tx.TotalPrice == expectedTotal &&
+				tx.IdempotencyKey == "idem-key-abc"
+		}),
+	).Return(fakeSavedTx(userID, expectedTotal), nil)
+
+	// KEY assertion: outboxRepo.Save must receive a valid OutboxEvent in the same tx
+	mockOutboxRepo.On("Save",
+		mock.Anything,
+		mock.AnythingOfType("*sql.Tx"),
+		mock.MatchedBy(func(e domain.OutboxEvent) bool {
+			return e.AggregateType == "Transaction" &&
+				e.Topic == event.TopicOrderCreated &&
+				e.Status == domain.OutboxStatusPending &&
+				len(e.Payload) > 0
+		}),
+	).Return(nil)
+
 	sqlMock.ExpectCommit()
 
-	// Assert that we are passing the calculated total price to the repository
-	mockTransactionRepo.On("Save", mock.Anything, mock.AnythingOfType("*sql.Tx"), mock.MatchedBy(func(tx domain.Transaction) bool {
-		return tx.TotalPrice == expectedTotalPrice
-	})).Return(domain.Transaction{
-		ID:         "tx-uuid-123",
-		UserID:     userId,
-		TotalPrice: expectedTotalPrice,
-		CreatedAt:  time.Now(),
-	}, nil)
+	req := dto.TransactionRequest{
+		IdempotencyKey: "idem-key-abc",
+		Products:       []dto.TransactionItem{{ProductID: 101, Quantity: 2}},
+	}
 
-	// Mock the producer correctly to avoid panic since it runs asynchronously
-	mockProducer.On("Publish", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-	tx, err := transactionService.Save(ctx, req, userId)
+	result, err := svc.Save(ctx, req, userID)
 
 	assert.NoError(t, err)
-	assert.Equal(t, expectedTotalPrice, tx.TotalPrice)
-
-	mockTransactionRepo.AssertExpectations(t)
+	assert.Equal(t, expectedTotal, result.TotalPrice)
+	assert.NoError(t, sqlMock.ExpectationsWereMet())
+	mockTxRepo.AssertExpectations(t)
+	mockOutboxRepo.AssertExpectations(t)
 	mockProductRepo.AssertExpectations(t)
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestSaveTransaction_InsufficientStock(t *testing.T) {
-	_, mockProductRepo, mockUserRepo, _, transactionService, sqlMock := setupTransactionServiceTesting(t)
+// TestSaveTransaction_IdempotencyConflict verifies:
+//   - When repo.Save() returns a *mysql.MySQLError with Number=1062 and idempotency_key in Message
+//   - Service type-asserts to *mysql.MySQLError and maps it to domain.ErrConflict
+//   - outboxRepo.Save() is NEVER called
+func TestSaveTransaction_IdempotencyConflict(t *testing.T) {
+	mockTxRepo, mockProductRepo, mockUserRepo, mockOutboxRepo, _, svc, sqlMock := setupTransactionServiceTesting(t)
 
 	ctx := context.Background()
-	userId := 1
+	userID := 1
+
+	mockUserRepo.On("FindById", mock.Anything, userID).
+		Return(domain.User{ID: userID, Email: "test@example.com"}, nil)
+	mockProductRepo.On("FindById", mock.Anything, 101).
+		Return(domain.Product{ID: 101, Name: "Item", Price: 10_000, Stock: 10}, nil)
+	mockProductRepo.On("DecrementStock", mock.Anything, mock.AnythingOfType("*sql.Tx"), 101, 1).
+		Return(nil)
+
+	sqlMock.ExpectBegin()
+
+	// Service uses type assertion: err.(*mysql.MySQLError), so we must return a real MySQLError.
+	// Number=1062 is the MySQL duplicate-entry error code.
+	// Message must contain "idempotency_key" to trigger the ErrConflict mapping.
+	duplicateErr := &gomysql.MySQLError{
+		Number:  1062,
+		Message: "Duplicate entry 'idem-key-abc' for key 'idempotency_key'",
+	}
+	mockTxRepo.On("Save", mock.Anything, mock.AnythingOfType("*sql.Tx"), mock.Anything).
+		Return(domain.Transaction{}, duplicateErr)
+
+	// defer tx.Rollback() in production code fires after function returns with error
+	sqlMock.ExpectRollback()
+
+	req := dto.TransactionRequest{
+		IdempotencyKey: "idem-key-abc",
+		Products:       []dto.TransactionItem{{ProductID: 101, Quantity: 1}},
+	}
+
+	_, err := svc.Save(ctx, req, userID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrConflict, "should map MySQLError 1062 on idempotency_key to domain.ErrConflict")
+	mockOutboxRepo.AssertNotCalled(t, "Save")
+	assert.NoError(t, sqlMock.ExpectationsWereMet())
+}
+
+// TestSaveTransaction_OutboxSaveFail_Rollback verifies:
+//   - When outboxRepo.Save() fails, tx.Commit() is NOT called
+//   - The overall operation returns an error containing "failed to save outbox event"
+//   - defer tx.Rollback() cleans up
+func TestSaveTransaction_OutboxSaveFail_Rollback(t *testing.T) {
+	mockTxRepo, mockProductRepo, mockUserRepo, mockOutboxRepo, _, svc, sqlMock := setupTransactionServiceTesting(t)
+
+	ctx := context.Background()
+	userID := 1
+
+	mockUserRepo.On("FindById", mock.Anything, userID).
+		Return(domain.User{ID: userID, Email: "test@example.com"}, nil)
+	mockProductRepo.On("FindById", mock.Anything, 101).
+		Return(domain.Product{ID: 101, Name: "Item", Price: 20_000, Stock: 5}, nil)
+	mockProductRepo.On("DecrementStock", mock.Anything, mock.AnythingOfType("*sql.Tx"), 101, 1).
+		Return(nil)
+
+	sqlMock.ExpectBegin()
+
+	mockTxRepo.On("Save", mock.Anything, mock.AnythingOfType("*sql.Tx"), mock.Anything).
+		Return(fakeSavedTx(userID, 20_000), nil)
+
+	// outbox fails — entire tx must roll back, not commit
+	mockOutboxRepo.On("Save", mock.Anything, mock.AnythingOfType("*sql.Tx"), mock.Anything).
+		Return(errors.New("db connection lost"))
+
+	// Commit must NOT be expected; only Rollback (from defer)
+	sqlMock.ExpectRollback()
+
+	req := dto.TransactionRequest{
+		Products: []dto.TransactionItem{{ProductID: 101, Quantity: 1}},
+	}
+
+	_, err := svc.Save(ctx, req, userID)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to save outbox event")
+	assert.NoError(t, sqlMock.ExpectationsWereMet(), "Commit should not have been called")
+}
+
+// TestSaveTransaction_ServerSidePriceCalculation verifies price is always
+// computed from DB, never trusted from client input.
+func TestSaveTransaction_ServerSidePriceCalculation(t *testing.T) {
+	mockTxRepo, mockProductRepo, mockUserRepo, mockOutboxRepo, _, svc, sqlMock := setupTransactionServiceTesting(t)
+
+	ctx := context.Background()
+	userID := 1
+	expectedTotal := 100_000 // 50000 * 2
+
+	mockUserRepo.On("FindById", mock.Anything, userID).
+		Return(domain.User{ID: userID, Email: "test@example.com"}, nil)
+	mockProductRepo.On("FindById", mock.Anything, 101).
+		Return(domain.Product{ID: 101, Name: "Test Item", Price: 50_000, Stock: 50}, nil)
+	mockProductRepo.On("DecrementStock", mock.Anything, mock.AnythingOfType("*sql.Tx"), 101, 2).
+		Return(nil)
+
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectCommit()
+
+	mockTxRepo.On("Save", mock.Anything, mock.AnythingOfType("*sql.Tx"),
+		mock.MatchedBy(func(tx domain.Transaction) bool {
+			return tx.TotalPrice == expectedTotal
+		}),
+	).Return(fakeSavedTx(userID, expectedTotal), nil)
+
+	mockOutboxRepo.On("Save", mock.Anything, mock.AnythingOfType("*sql.Tx"), mock.Anything).
+		Return(nil)
+
+	req := dto.TransactionRequest{
+		Products: []dto.TransactionItem{{ProductID: 101, Quantity: 2}},
+	}
+
+	result, err := svc.Save(ctx, req, userID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expectedTotal, result.TotalPrice)
+	mockTxRepo.AssertExpectations(t)
+	mockProductRepo.AssertExpectations(t)
+	mockUserRepo.AssertExpectations(t)
+}
+
+// TestSaveTransaction_InsufficientStock verifies stock validation before SQL ops.
+func TestSaveTransaction_InsufficientStock(t *testing.T) {
+	_, mockProductRepo, mockUserRepo, mockOutboxRepo, _, svc, sqlMock := setupTransactionServiceTesting(t)
+
+	ctx := context.Background()
+	userID := 1
 
 	sqlMock.ExpectBegin()
 	sqlMock.ExpectRollback()
 
-	// Setup valid user
-	mockUserRepo.On("FindById", mock.Anything, userId).Return(domain.User{ID: userId, Email: "test@example.com"}, nil)
-
-	// Product has only 1 in stock
-	mockProductRepo.On("FindById", mock.Anything, 101).Return(domain.Product{
-		ID:    101,
-		Name:  "Test Item",
-		Price: 50000,
-		Stock: 1,
-	}, nil)
+	mockUserRepo.On("FindById", mock.Anything, userID).
+		Return(domain.User{ID: userID, Email: "test@example.com"}, nil)
+	mockProductRepo.On("FindById", mock.Anything, 101).
+		Return(domain.Product{ID: 101, Name: "Test Item", Price: 50_000, Stock: 1}, nil)
 
 	req := dto.TransactionRequest{
-		Products: []dto.TransactionItem{
-			{
-				ProductID: 101,
-				Quantity:  5, // Requires 5, but stock is only 1
-			},
-		},
+		Products: []dto.TransactionItem{{ProductID: 101, Quantity: 5}},
 	}
 
-	tx, err := transactionService.Save(ctx, req, userId)
+	_, err := svc.Save(ctx, req, userID)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "insufficient stock")
-	assert.Empty(t, tx) // Transaction should be zero-value struct
+	mockOutboxRepo.AssertNotCalled(t, "Save")
+}
 
-	mockProductRepo.AssertExpectations(t)
-	mockUserRepo.AssertExpectations(t)
+// TestSaveTransaction_UserNotFound verifies early exit when user doesn't exist.
+func TestSaveTransaction_UserNotFound(t *testing.T) {
+	_, _, mockUserRepo, mockOutboxRepo, _, svc, _ := setupTransactionServiceTesting(t)
+
+	ctx := context.Background()
+
+	mockUserRepo.On("FindById", mock.Anything, 999).
+		Return(domain.User{}, domain.ErrNotFound)
+
+	req := dto.TransactionRequest{
+		Products: []dto.TransactionItem{{ProductID: 101, Quantity: 1}},
+	}
+
+	_, err := svc.Save(ctx, req, 999)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	mockOutboxRepo.AssertNotCalled(t, "Save")
 }

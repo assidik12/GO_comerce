@@ -26,7 +26,7 @@ business logic; it's what makes good business logic possible.
 
 ---
 
-## ✨ Fitur Utama
+## ✨ Key Features
 
 <table>
 <tr>
@@ -59,7 +59,8 @@ business logic; it's what makes good business logic possible.
 
 - ✅ Order creation & tracking
 - ✅ Transaction history
-- ✅ UUID-based transaction IDs
+- ✅ Idempotency Key support (Duplicate prevention)
+- ✅ Transactional Outbox Pattern (Guaranteed Event Delivery)
 - ✅ Business logic validation
 - ✅ Event publishing to Kafka
 
@@ -68,11 +69,13 @@ business logic; it's what makes good business logic possible.
 
 ### 🛠️ Technical Features
 
-- ✅ Auto database migration
-- ✅ Input validation (struct-level)
+### 🔭 Observability & Testing
+
+- ✅ Prometheus Metrics (`/metrics`)
+- ✅ OpenTelemetry Tracing (Jaeger)
+- ✅ Comprehensive Test Suite (>85% coverage)
+- ✅ Concurrent Race-Condition Testing
 - ✅ Error handling middleware
-- ✅ Dependency Injection (Wire)
-- ✅ Message broker integration
 
 </td>
 </tr>
@@ -125,9 +128,9 @@ Learn how Catalyst handles these with pattern that scale to millions of users.
 
 ---
 
-## 🏗️ Arsitektur
+## 🏗️ Architecture
 
-Aplikasi ini menggunakan **Clean Architecture** yang terintegrasi dengan **Event-Driven Architecture** untuk menopang platform *commerce* yang sangat *scalable* dan tangguh (*resilient*).
+This application uses **Clean Architecture** integrated with **Event-Driven Architecture** to support a highly *scalable* and *resilient* commerce platform.
 
 ### Layered Architecture Diagram
 
@@ -138,23 +141,23 @@ Aplikasi ini menggunakan **Clean Architecture** yang terintegrasi dengan **Event
                  │
                  ▼
  ┌───────────────────────────────┐
- │       HTTP Handler (Delivery) │  ← Menerima input, parsing DTO, HTTP Response
+ │       HTTP Handler (Delivery) │  ← Receives input, parses DTOs, returns HTTP Response
  └───────────────┬───────────────┘
                  │
                  ▼
- ┌───────────────────────────────┐  ← Validasi bisnis, kalkulasi harga, orkestrasi
+ ┌───────────────────────────────┐  ← Business validation, price calculation, orchestration
  │      Service (Use Case)       │  
  │   [ Transaction Atomicity ]   │─────┐ (Publish Async Event)
  └───────────────┬───────────────┘     │
                  │                     ▼
                  ▼              ┌────────────────┐
- ┌───────────────────────────────┐      │ Apache Kafka   │  ← Event Broker untuk Asynchronous Task
+ ┌───────────────────────────────┐      │ Apache Kafka   │  ← Event Broker for Asynchronous Tasks
  │   Repository (Data Access)    │      │ (Message Bus)  │  
  │   [ Cache Stampede Protect ]  │      └────────────────┘
  └───────────────┬───────────────┘             │
                  │                             ▼
                  │                      ┌────────────────┐
-         ┌───────┴───────┐              │  Async Workers │  ← Notifikasi (Email), Third-party integrations
+         ┌───────┴───────┐              │  Async Workers │  ← Notifications (Email), Third-party integrations
          ▼               ▼              └────────────────┘
  ┌──────────────┐ ┌──────────────┐
  │    Redis     │ │    MySQL     │
@@ -165,13 +168,15 @@ Aplikasi ini menggunakan **Clean Architecture** yang terintegrasi dengan **Event
 
 </div>
 
-**Setiap Layer memiliki batasan yang tegas:**
-- **Handler (Presentation)**: Hanya fokus pada HTTP layer, deserialization JSON -> DTO, dan pemetaan *Error Sentinel* menjadi HTTP Status Code yang tepat.
-- **Service (Business Logic)**: Tidak tahu soal *database* spesifik atau HTTP. Menjalankan *Use Cases* utama (misal: memotong stok, memastikan harga dari DB, melempar Event).
-- **Repository (Data Access)**: Berfokus mengeksekusi query database dan caching (Redis). Di sinilah `Singleflight` digunakan untuk mencegah *Cache Stampede*.
-- **Infrastructure**: Inisialisasi dependensi eskternal (Koneksi Database, Redis Client, Kafka Writer).
+</div>
 
-### 📂 Struktur Folder
+**Each layer has strict boundaries:**
+- **Handler (Presentation)**: Focuses only on the HTTP layer, JSON to DTO deserialization, and mapping *Error Sentinels* to proper HTTP Status Codes.
+- **Service (Business Logic)**: Unaware of specific databases or HTTP. Executes core *Use Cases* (e.g., deducting stock, verifying prices, publishing Events).
+- **Repository (Data Access)**: Focuses on executing database queries and caching (Redis). This is where `Singleflight` is used to prevent *Cache Stampedes*.
+- **Infrastructure**: Initialization of external dependencies (Database connections, Redis client, Kafka writer).
+
+### 📂 Folder Structure
 
 ```
 go-restfull-api/
@@ -233,9 +238,9 @@ go-restfull-api/
 <br>Message Broker
 </td>
 <td align="center" width="20%">
-<img src="https://www.docker.com/wp-content/uploads/2022/03/vertical-logo-monochromatic.png" width="80" height="80" alt="Docker"/>
-<br><b>Docker</b>
-<br>Containerization
+<img src="https://upload.wikimedia.org/wikipedia/commons/3/38/Prometheus_software_logo.svg" width="80" height="80" alt="Prometheus"/>
+<br><b>Prometheus & Jaeger</b>
+<br>Observability
 </td>
 </tr>
 </table>
@@ -266,7 +271,7 @@ go-restfull-api/
 
 ### 📋 Prerequisites
 
-Pastikan sistem Anda telah menginstall:
+Ensure your system has the following installed:
 
 - [Git](https://git-scm.com/) (v2.0+)
 - [Docker](https://docs.docker.com/get-docker/) (v20.10+)
@@ -283,7 +288,7 @@ cd go-restfull-api
 
 #### 2️⃣ Setup Environment Variables
 
-Buat file `.env` di root directory:
+Create a `.env` file in the root directory:
 
 ```bash
 # Windows (CMD)
@@ -296,7 +301,7 @@ New-Item .env -ItemType File
 touch .env
 ```
 
-Copy dan sesuaikan konfigurasi berikut ke file `.env`:
+Copy and adjust the following configuration into your `.env` file:
 
 ```env
 # ================================
@@ -339,9 +344,9 @@ JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 
 > ⚠️ **Security Warning**:
 >
-> - Ganti semua password dengan nilai yang strong untuk production
-> - Pastikan `.env` sudah ada di `.gitignore`
-> - Jangan commit `.env` ke repository
+> - Change all passwords to strong values for production
+> - Ensure `.env` is included in `.gitignore`
+> - Do not commit `.env` to the repository
 
 #### 3️⃣ Run Application
 
@@ -349,18 +354,18 @@ JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 docker-compose up --build
 ```
 
-Proses ini akan:
+This process will:
 
-- 📦 Build Docker images untuk Go application
-- 🗄️ Setup MySQL database dengan healthcheck
-- 🚀 Setup Redis cache dengan healthcheck
+- 📦 Build Docker images for the Go application
+- 🗄️ Setup MySQL database with healthcheck
+- 🚀 Setup Redis cache with healthcheck
 - 📨 Setup Apache Kafka & Zookeeper
-- 🔄 Menjalankan database migrations secara otomatis
-- ▶️ Start aplikasi pada port 3001
+- 🔄 Run database migrations automatically
+- ▶️ Start the application on port 3001
 
-### ✅ Verifikasi
+### ✅ Verification
 
-Setelah semua container berjalan, Anda akan melihat output:
+Once all containers are running, you will see output similar to:
 
 ```
 ✅ zookeeper              - healthy
@@ -370,7 +375,7 @@ Setelah semua container berjalan, Anda akan melihat output:
 ✅ go-app-service         - running
 ```
 
-Akses endpoints:
+Access endpoints:
 
 - 🌐 **API Base URL**: http://localhost:3001
 - 📚 **API Documentation**: http://localhost:3001/api/v1/docs
@@ -422,25 +427,25 @@ Akses endpoints:
 
 | Variable   | Default | Description                       |
 | ---------- | ------- | --------------------------------- |
-| `APP_PORT` | `3000`  | Port untuk aplikasi Go (internal) |
+| `APP_PORT` | `3000`  | Port for Go application (internal) |
 
 #### MySQL Settings
 
 | Variable              | Required | Description                               |
 | --------------------- | -------- | ----------------------------------------- |
-| `MYSQL_HOST`          | ✅       | Database host (gunakan `db` untuk Docker) |
+| `MYSQL_HOST`          | ✅       | Database host (use `db` for Docker) |
 | `MYSQL_PORT`          | ✅       | Database port (default: `3306`)           |
 | `MYSQL_USER`          | ✅       | Database username                         |
 | `MYSQL_PASSWORD`      | ✅       | Database password                         |
 | `MYSQL_DATABASE`      | ✅       | Database name                             |
 | `MYSQL_ROOT_PASSWORD` | ✅       | MySQL root password                       |
-| `DB_URL`              | ✅       | Full connection string untuk migrations   |
+| `DB_URL`              | ✅       | Full connection string for migrations   |
 
 #### Redis Settings
 
 | Variable         | Required | Description                               |
 | ---------------- | -------- | ----------------------------------------- |
-| `REDIS_HOST`     | ✅       | Redis host (gunakan `cache` untuk Docker) |
+| `REDIS_HOST`     | ✅       | Redis host (use `cache` for Docker) |
 | `REDIS_PORT`     | ✅       | Redis port (default: `6379`)              |
 | `REDIS_PASSWORD` | ✅       | Redis authentication password             |
 
@@ -454,27 +459,27 @@ Akses endpoints:
 
 | Variable     | Required | Description                           |
 | ------------ | -------- | ------------------------------------- |
-| `JWT_SECRET` | ✅       | Secret key untuk JWT token generation |
+| `JWT_SECRET` | ✅       | Secret key for JWT token generation |
 
 </details>
 
 ---
 
-## 📚 Dokumentasi API
+## 📚 API Documentation
 
 ### 📖 Swagger Documentation
 
-API documentation tersedia melalui Swagger UI:
+API documentation is available via Swagger UI:
 
 **URL**: http://localhost:3001/api/v1/docs/
 
 ### 🔑 Authentication
 
-API menggunakan **JWT (JSON Web Token)** untuk authentication:
+The API uses **JWT (JSON Web Token)** for authentication:
 
-1. Register user melalui endpoint `/api/v1/users/register`
-2. Login untuk mendapatkan JWT token via `/api/v1/users/login`
-3. Include token di header: `Authorization: Bearer <your-token>`
+1. Register a user via the `/api/v1/users/register` endpoint
+2. Login to get a JWT token via `/api/v1/users/login`
+3. Include the token in the header: `Authorization: Bearer <your-token>`
 
 ### 📍 Endpoints Overview
 
@@ -510,13 +515,13 @@ API menggunakan **JWT (JSON Web Token)** untuk authentication:
 
 ### Redis Implementation
 
-Aplikasi ini menggunakan **Redis** untuk caching data produk guna mengurangi beban database dan meningkatkan response time.
+This application uses **Redis** to cache product data, reducing database load and improving response times.
 
 #### Cache Specifications
 
 - **Cached Endpoints**:
-  - `GET /api/v1/products/:id` - Detail produk individual
-  - `GET /api/v1/products?page=X` - Daftar produk dengan paginasi
+  - `GET /api/v1/products/:id` - Individual product details
+  - `GET /api/v1/products?page=X` - Paginated product list
 - **TTL (Time-To-Live)**: 10 menit
 - **Cache Key Pattern**:
   - Detail: `product:detail:{id}`
@@ -558,16 +563,16 @@ Aplikasi ini menggunakan **Redis** untuk caching data produk guna mengurangi beb
 
 #### Cache Invalidation
 
-Cache secara otomatis di-invalidate (dihapus) pada event berikut:
+Cache is automatically invalidated (deleted) on the following events:
 
-- **Update Product**: Menghapus cache `product:detail:{id}` dan semua cache list (`products:list:*`)
-- **Delete Product**: Menghapus cache `product:detail:{id}` dan semua cache list
-- **Create Product**: Menghapus semua cache list untuk memastikan produk baru muncul
+- **Update Product**: Deletes `product:detail:{id}` and all list caches (`products:list:*`)
+- **Delete Product**: Deletes `product:detail:{id}` and all list caches
+- **Create Product**: Deletes all list caches to ensure new products appear
 
 #### Performance Optimization
 
-- **Singleflight Pattern**: Mencegah **cache stampede** dengan memastikan hanya satu goroutine yang melakukan query database untuk key yang sama pada saat bersamaan.
-- **Concurrent-Safe**: `CacheWrapper` aman digunakan oleh multiple goroutines.
+- **Singleflight Pattern**: Prevents **cache stampedes** by ensuring only one goroutine queries the database for the same key simultaneously.
+- **Concurrent-Safe**: `CacheWrapper` is safe for concurrent use by multiple goroutines.
 
 ---
 
@@ -575,7 +580,7 @@ Cache secara otomatis di-invalidate (dihapus) pada event berikut:
 
 ### Apache Kafka Integration
 
-Aplikasi ini menggunakan **Apache Kafka** sebagai message broker untuk menangani proses asinkron dan meningkatkan skalabilitas sistem.
+This application uses **Apache Kafka** as a message broker to handle asynchronous processes and improve system scalability.
 
 #### Event Flow
 
@@ -622,7 +627,7 @@ Aplikasi ini menggunakan **Apache Kafka** sebagai message broker untuk menangani
 
 | Topic           | Event Type          | Producer             | Consumer (Future)      | Description                          |
 | --------------- | ------------------- | -------------------- | ---------------------- | ------------------------------------ |
-| `order_created` | `OrderCreatedEvent` | `TransactionService` | `NotificationConsumer` | Dipublish saat transaksi baru dibuat |
+| `order_created` | `OrderCreatedEvent` | `TransactionService` | `NotificationConsumer` | Published when a new transaction is created |
 
 #### Event Payload: `OrderCreatedEvent`
 
@@ -638,39 +643,39 @@ Aplikasi ini menggunakan **Apache Kafka** sebagai message broker untuk menangani
 
 #### Why Kafka?
 
-- ⚡ **Decoupling**: Service tidak perlu menunggu proses lambat (email, notification) selesai
-- 🚀 **Scalability**: Consumer bisa di-scale secara independen
-- 🔄 **Reliability**: Message tersimpan di Kafka sampai berhasil di-consume
-- 📊 **Event Sourcing**: Log semua event penting untuk audit dan analytics
+- ⚡ **Decoupling**: Services do not need to wait for slow processes (emails, notifications) to finish
+- 🚀 **Scalability**: Consumers can be scaled independently
+- 🔄 **Reliability**: Messages are persisted in Kafka until successfully consumed
+- 📊 **Event Sourcing**: Logs all critical events for auditing and analytics
 
 ---
 
 ## 🧪 Testing (Comprehensive Suite)
 
-Aplikasi ini dilengkapi dengan pengujian level-industri (*enterprise-grade unit testing*) yang menyimulasikan berbagai kondisi, seperti interupsi koneksi, pembatalan *context*, serta *cache miss* tanpa membebani *production environment*.
+This application includes enterprise-grade unit testing that simulates various conditions, such as connection interruptions, context cancellations, and cache misses, without affecting the production environment.
 
-### 🏗️ Tools & Mocks yang Digunakan
-1. **[testify/mock](https://github.com/stretchr/testify):** Digunakan pada *Service Layer* dan *Handler Layer* untuk *mocking* repository interface dan *service interface* secara akurat tanpa menyentuh *database* atau Redis asli.
-2. **[DATA-DOG/go-sqlmock](https://github.com/DATA-DOG/go-sqlmock):** Digunakan untuk melakukan *mock* terhadap level driver SQL dan melacak query eksekusi `t.DB.BeginTx(ctx, nil)` serta konektivitas `Ping()`.
-3. **httptest:** Standar library `net/http/httptest` dimanfaatkan dalam lapisan *Delivery* (`middleware` & `handler`) untuk merekam skenario HTTP (401 Unauthorized, 200 OK, Canceled Context, dsb.).
+### 🏗️ Tools & Mocks Used
+1. **[testify/mock](https://github.com/stretchr/testify):** Used in the *Service Layer* and *Handler Layer* to accurately mock repository and service interfaces without touching the actual database or Redis.
+2. **[DATA-DOG/go-sqlmock](https://github.com/DATA-DOG/go-sqlmock):** Used to mock the SQL driver level and track query executions like `t.DB.BeginTx(ctx, nil)` and `Ping()` connectivity.
+3. **httptest:** The standard `net/http/httptest` library is utilized in the *Delivery* layer (`middleware` & `handler`) to record HTTP scenarios (401 Unauthorized, 200 OK, Canceled Context, etc.).
 
 ### ▶️ Run the Test Suite
 
 ```bash
-# Jalankan seluruh skenario Unit Tests
+# Run all Unit Test scenarios
 go test -v ./...
 
-# Jalankan Test dengan menampilkan Real Code Coverage dari seluruh package
+# Run Tests with real Code Coverage across all packages
 go test -v -coverpkg=./... ./...
 
-# Jalankan skenario per sub-package / domain specific (Contoh: area service validation)
+# Run specific scenarios per sub-package / domain (e.g., service validation area)
 go test -v ./test/service/...
 ```
 
-### ✨ Contoh Beberapa Skema Evaluasi:
-- **Resiliency Testing**: Simulasi Redis mati paksa melalui *invalid dummy port* (`localhost:9999`) untuk men-segera-kan *I/O timeout* memicu *fallback* ke sistem komputasi MySQL.
-- **Context Cancellation**: Simulasi `context.WithCancel()` secara spesifik pada HTTP request handlers.
-- **Strict Data-Driven**: Logika penetapan *Transaction Total Price* dijalankan murni oleh *backend pricing query* tanpa bisa dipengaruhi memanipulasi parameter di level JWT/Frontend.
+### ✨ Example Evaluation Scenarios:
+- **Resiliency Testing**: Simulates forced Redis failure via an invalid dummy port (`localhost:9999`) to trigger immediate I/O timeouts, falling back to MySQL queries.
+- **Context Cancellation**: Simulates `context.WithCancel()` specifically on HTTP request handlers.
+- **Strict Data-Driven**: Transaction total price calculation is purely executed by backend queries and cannot be manipulated via JWT/Frontend parameters.
 ---
 
 ## 🐛 Troubleshooting
@@ -678,18 +683,18 @@ go test -v ./test/service/...
 <details>
 <summary><b>Common Issues & Solutions</b></summary>
 
-### Issue: Container gagal start
+### Issue: Container fails to start
 
 **Solution**:
 
 ```bash
-# Stop semua container
+# Stop all containers
 docker-compose down
 
-# Remove volumes (⚠️ ini akan menghapus data!)
+# Remove volumes (⚠️ this will delete data!)
 docker-compose down -v
 
-# Rebuild dan start ulang
+# Rebuild and restart
 docker-compose up --build
 ```
 
@@ -702,7 +707,7 @@ docker-compose up --build
 netstat -ano | findstr :3001
 netstat -ano | findstr :9092
 
-# Kill process atau ubah port di .env dan docker-compose.yml
+# Kill the process or change ports in .env and docker-compose.yml
 ```
 
 ### Issue: Kafka broker not reachable
@@ -743,7 +748,7 @@ docker exec -it redis-cache-service redis-cli
 docker exec -it go-app-service /bin/sh
 migrate -database "$DB_URL" -path db/migrations version
 
-# Force specific version (⚠️ hati-hati!)
+# Force specific version (⚠️ use with caution!)
 migrate -database "$DB_URL" -path db/migrations force <version>
 ```
 
@@ -773,7 +778,7 @@ migrate -database "$DB_URL" -path db/migrations force <version>
 go mod download
 ```
 
-2. Install Wire (untuk regenerate dependency injection):
+2. Install Wire (to regenerate dependency injection):
 
 ```bash
 go install github.com/google/wire/cmd/wire@latest
@@ -781,7 +786,7 @@ go install github.com/google/wire/cmd/wire@latest
 
 3. Setup local MySQL, Redis, & Kafka
 
-4. Update `.env` dengan local configuration:
+4. Update `.env` with local configurations:
 
 ```env
 MYSQL_HOST=localhost
@@ -795,7 +800,7 @@ KAFKA_BROKER=localhost:9092
 migrate -database "mysql://user:pass@tcp(localhost:3306)/dbname" -path db/migrations up
 ```
 
-6. (Optional) Regenerate Wire code jika ada perubahan dependency:
+6. (Optional) Regenerate Wire code if dependencies change:
 
 ```bash
 cd cmd/injector
@@ -812,25 +817,42 @@ go run cmd/api/main.go
 
 ---
 
-## 🗺️ Roadmap
+## 🗺️ Project Phases & Roadmap
 
-- [ ] Implement Kafka Consumer untuk notifikasi email
-- [ ] Add Prometheus metrics untuk monitoring
-- [ ] Implement rate limiting middleware
-- [ ] Add comprehensive integration tests
+This project is being built in structured phases to ensure enterprise-grade quality at each step.
+
+### ✅ Phase 1: Reliability Hardening (Completed)
+- **Outbox Pattern**: Events are saved to an `outbox_events` table within the same DB transaction as business data. A background worker (Relay) reliably publishes them to Kafka with retry mechanisms.
+- **Idempotency Key**: Endpoints like Transaction Creation support `Idempotency-Key` headers to prevent double-charging or duplicate transactions during network retries.
+
+### ✅ Phase 2: Observability (Completed)
+- **Prometheus Metrics**: Added `MetricsMiddleware` to expose a `/metrics` endpoint, capturing RED metrics (Rate, Errors, Duration) for all HTTP endpoints.
+- **OpenTelemetry & Jaeger**: Distributed tracing is injected via `TracingMiddleware`. Trace contexts are propagated automatically, allowing deep insight into database and cache performance.
+
+### ✅ Phase 3: Comprehensive Test Coverage (Completed)
+- **Unit & Integration Tests**: Implemented mock-based unit tests using `testify/mock` and `go-sqlmock`.
+- **Concurrent Testing**: Verified race condition prevention in stock decrement logic using parallel goroutines.
+
+### ⏳ Phase 4: AI Agent Integration (In Progress)
+- [ ] Integration with Anthropic API for Smart Product Recommendations
+- [ ] User mental-wellness driven personalization
+- [ ] Contextual shopping assistance
+
+### 📅 Phase 5: Future Enhancements (Backlog)
+- [ ] Implement Kafka Consumer for email notifications (`NotificationConsumer`)
 - [ ] Setup CI/CD pipeline (GitHub Actions)
-- [ ] Add Swagger auto-generation
-- [ ] Implement gRPC endpoints untuk inter-service communication
+- [ ] Add Swagger auto-generation via `swaggo`
+- [ ] Implement gRPC endpoints for inter-service communication
 
 ---
 
-## 🤝 Kontribusi
+## 🤝 Contributing
 
-Kontribusi sangat diterima! Silakan buka issue atau pull request untuk improvement.
+Contributions are highly appreciated! Feel free to open an issue or submit a pull request for improvements.
 
 ### 📝 How to Contribute
 
-1. Fork repository ini
+1. Fork this repository
 2. Create feature branch (`git checkout -b feature/AmazingFeature`)
 3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to branch (`git push origin feature/AmazingFeature`)
@@ -855,7 +877,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## 🌟 Show Your Support
 
-Jika proyek ini membantu Anda, berikan ⭐️ di [GitHub](https://github.com/assidik12/go-restfull-api)!
+If this project helped you, please give it a ⭐️ on [GitHub](https://github.com/assidik12/go-restfull-api)!
 
 ---
 

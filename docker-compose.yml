@@ -109,6 +109,8 @@ services:
       REDIS_PORT: 6379
       KAFKA_HOST: message-broker
       KAFKA_PORT: 9092
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      DB_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(db:3306)/${MYSQL_DATABASE}?multiStatements=true
     ports:
       - "3001:3000"
     depends_on:
@@ -118,6 +120,25 @@ services:
         condition: service_healthy
       message-broker:
         condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-service
+    restart: unless-stopped
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger-service
+    restart: unless-stopped
+    ports:
+      - "16686:16686" # UI Port
+      - "14268:14268" # HTTP trace ingestion
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
 
 volumes:
   db-data:

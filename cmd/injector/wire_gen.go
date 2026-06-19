@@ -17,6 +17,7 @@ import (
 	"github.com/assidik12/catalyst/internal/repository/mysql"
 	"github.com/assidik12/catalyst/internal/repository/redis"
 	"github.com/assidik12/catalyst/internal/service"
+	"github.com/assidik12/catalyst/internal/worker"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/wire"
 	"log/slog"
@@ -25,7 +26,7 @@ import (
 
 // Injectors from injector.go:
 
-func InitializedServer(cfg config.Config) (*http.Server, func(), error) {
+func InitializedServer(cfg config.Config) (App, func(), error) {
 	db := infrastructure.DatabaseConnection(cfg)
 	userRepository := mysql.NewUserRepository(db)
 	v := _wireValue
@@ -39,15 +40,18 @@ func InitializedServer(cfg config.Config) (*http.Server, func(), error) {
 	productService := service.NewProductService(productRepository, db, wrapper, validate)
 	productHandler := handler.NewProductHandler(productService)
 	transactionRepository := mysql.NewTransactionRepository(db)
+	outboxRepository := mysql.NewOutboxRepository(db)
 	writer := infrastructure.NewKafkaWriter(cfg)
 	kafkaProducer := event.NewKafkaProducer(writer)
 	logger := ProvideLogger(cfg)
-	transactionService := service.NewTransactionService(transactionRepository, db, validate, userRepository, productRepository, kafkaProducer, logger)
+	transactionService := service.NewTransactionService(transactionRepository, db, validate, userRepository, productRepository, outboxRepository, kafkaProducer, logger)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 	router := route.NewRouter(userHandler, productHandler, transactionHandler, string2)
 	authMiddleware := middleware.NewAuthMiddleware(router)
 	server := config.NewServer(authMiddleware)
-	return server, func() {
+	outboxRelay := worker.NewOutboxRelay(outboxRepository, kafkaProducer, logger)
+	app := NewApp(server, outboxRelay)
+	return app, func() {
 	}, nil
 }
 
@@ -59,12 +63,23 @@ var (
 
 var validatorSet = wire.NewSet(validator.New, wire.Value([]validator.Option{}))
 
+type App struct {
+	Server *http.Server
+	Relay  worker.OutboxRelay
+}
+
+func NewApp(server *http.Server, relay worker.OutboxRelay) App {
+	return App{Server: server, Relay: relay}
+}
+
 // Setup Kafka
 var eventSet = wire.NewSet(infrastructure.NewKafkaWriter, event.NewKafkaProducer, wire.Bind(new(event.Producer), new(*event.KafkaProducer)))
 
 var userSet = wire.NewSet(mysql.NewUserRepository, service.NewUserService, handler.NewUserHandler)
 
 var productSet = wire.NewSet(mysql.NewProductRepository, service.NewProductService, handler.NewProductHandler)
+
+var outboxSet = wire.NewSet(mysql.NewOutboxRepository, worker.NewOutboxRelay)
 
 var transactionSet = wire.NewSet(mysql.NewTransactionRepository, service.NewTransactionService, handler.NewTransactionHandler)
 

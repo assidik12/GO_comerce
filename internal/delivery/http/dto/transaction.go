@@ -6,7 +6,8 @@ type TransactionItem struct {
 }
 
 type TransactionRequest struct {
-	Products []TransactionItem `json:"products"`
+	IdempotencyKey string            `json:"-"`
+	Products       []TransactionItem `json:"products"`
 }
 
 type TransactionResponse struct {

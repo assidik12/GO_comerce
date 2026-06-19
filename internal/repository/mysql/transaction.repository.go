@@ -18,14 +18,24 @@ func NewTransactionRepository(db *sql.DB) domain.TransactionRepository {
 
 func (t *transactionRepository) Save(ctx context.Context, tx *sql.Tx, transaction domain.Transaction) (domain.Transaction, error) {
 	// 1. Insert into master table `transactions`
-	qMaster := "INSERT INTO transactions (id, user_id, total_price, created_at) VALUES (?, ?, ?, ?)"
+	qMaster := "INSERT INTO transactions (id, user_id, total_price, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?)"
+	
+	var idempotencyKey interface{}
+	if transaction.IdempotencyKey != "" {
+		idempotencyKey = transaction.IdempotencyKey
+	} else {
+		idempotencyKey = nil
+	}
+
 	_, err := tx.ExecContext(ctx, qMaster,
 		transaction.ID,
 		transaction.UserID,
 		transaction.TotalPrice,
+		idempotencyKey,
 		transaction.CreatedAt,
 	)
 	if err != nil {
+		// If duplicate entry for idempotency key
 		return domain.Transaction{}, err
 	}
 
