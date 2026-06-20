@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/assidik12/catalyst/internal/domain"
+	"github.com/go-sql-driver/mysql"
 )
 
 type transactionRepository struct {
@@ -35,7 +36,9 @@ func (t *transactionRepository) Save(ctx context.Context, tx *sql.Tx, transactio
 		transaction.CreatedAt,
 	)
 	if err != nil {
-		// If duplicate entry for idempotency key
+		if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == 1062 {
+			return domain.Transaction{}, domain.ErrConflict
+		}
 		return domain.Transaction{}, err
 	}
 

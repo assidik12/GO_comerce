@@ -2,19 +2,17 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/assidik12/catalyst/internal/delivery/http/dto"
 	"github.com/assidik12/catalyst/internal/domain"
 	"github.com/assidik12/catalyst/internal/event"
-	"github.com/go-sql-driver/mysql"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 )
 
 // TransactionService defines the business-logic contract for transactions.
@@ -30,7 +28,7 @@ type transactionService struct {
 	userRepo    domain.UserRepository
 	productRepo domain.ProductRepository
 	outboxRepo  domain.OutboxRepository
-	DB          *sql.DB
+	DB          domain.TransactionManager
 	validator   *validator.Validate
 	producer    event.Producer
 	logger      *slog.Logger
@@ -38,7 +36,7 @@ type transactionService struct {
 
 func NewTransactionService(
 	repo domain.TransactionRepository,
-	DB *sql.DB,
+	DB domain.TransactionManager,
 	validate *validator.Validate,
 	userRepo domain.UserRepository,
 	productRepo domain.ProductRepository,
@@ -84,6 +82,10 @@ func (t *transactionService) GetAll(ctx context.Context, idUser int) ([]domain.T
 }
 
 func (t *transactionService) Save(ctx context.Context, transaction dto.TransactionRequest, idUser int) (domain.Transaction, error) {
+	// Memulai Child Span untuk proses bisnis Save Transaksi
+	ctx, span := otel.Tracer("service").Start(ctx, "TransactionService.Save")
+	defer span.End()
+
 	// 1. Verify user exists
 	user, err := t.userRepo.FindById(ctx, idUser)
 	if err != nil {
@@ -141,11 +143,6 @@ func (t *transactionService) Save(ctx context.Context, transaction dto.Transacti
 
 	savedTransaction, err := t.repo.Save(ctx, tx, transactionToSave)
 	if err != nil {
-		if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == 1062 {
-			if strings.Contains(mysqlErr.Message, "idempotency_key") {
-				return domain.Transaction{}, fmt.Errorf("%w: idempotency key already exists", domain.ErrConflict)
-			}
-		}
 		return domain.Transaction{}, err
 	}
 
@@ -157,7 +154,7 @@ func (t *transactionService) Save(ctx context.Context, transaction dto.Transacti
 		Products:      eventProducts,
 		CreatedAt:     savedTransaction.CreatedAt,
 	}
-	
+
 	payload, _ := json.Marshal(orderEvent)
 	outboxEvent := domain.OutboxEvent{
 		ID:            uuid.NewString(),

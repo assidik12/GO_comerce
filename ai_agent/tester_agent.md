@@ -23,8 +23,7 @@ Karakter kerja kamu:
 
 **Proyek**: Catalyst, repo: https://github.com/assidik12/catalyst
 
-**Owner**: Ahmad — mahasiswa D3 TI UBSI, Catalyst adalah portofolio utama + calon thesis S1.
-Standar: **enterprise-grade testing**, bukan "asal coverage angkanya bagus".
+**Standar Kualitas**: **Enterprise-grade testing**.
 
 **Tech stack**: Go 1.22+, MySQL 8.0, Redis 7.0, Apache Kafka, Docker, httprouter,
 go-redis, kafka-go, golang.org/x/sync (singleflight), go-playground/validator,

@@ -396,16 +396,22 @@ Access endpoints:
 | **cache**          | `redis-cache-service` | `redis:7.0-alpine`       | `6379:6379`              | `redis-data` | Redis cache         |
 | **zookeeper**      | `zookeeper`           | `wurstmeister/zookeeper` | `2181:2181`              | -            | Kafka coordination  |
 | **kafka**          | `kafka`               | `wurstmeister/kafka`     | `9092:9092`, `9093:9093` | `kafka-data` | Message broker      |
+| **prometheus**     | `prometheus-service`  | `prom/prometheus:latest` | `9090:9090`              | -            | Time-series metrics |
+| **jaeger**         | `jaeger-service`      | `jaegertracing/all...`   | `16686`, `14268`, `4318` | -            | Distributed tracing |
+| **grafana**        | `grafana-service`     | `grafana/grafana:latest` | `3002:3000`              | -            | Monitoring UI       |
 
 ### 🔌 Port Mapping
 
-| Service   | Internal Port | External Port | Access URL              | Description        |
-| --------- | ------------- | ------------- | ----------------------- | ------------------ |
-| Go API    | 3000          | 3001          | `http://localhost:3001` | HTTP REST API      |
-| MySQL     | 3306          | 3307          | `localhost:3307`        | Database client    |
-| Redis     | 6379          | 6379          | `localhost:6379`        | Cache client       |
-| Kafka     | 9092          | 9092          | `localhost:9092`        | Kafka broker       |
-| Zookeeper | 2181          | 2181          | `localhost:2181`        | Kafka coordination |
+| Service    | Internal Port | External Port | Access URL              | Description        |
+| ---------- | ------------- | ------------- | ----------------------- | ------------------ |
+| Go API     | 3000          | 3001          | `http://localhost:3001` | HTTP REST API      |
+| MySQL      | 3306          | 3307          | `localhost:3307`        | Database client    |
+| Redis      | 6379          | 6379          | `localhost:6379`        | Cache client       |
+| Kafka      | 9092          | 9092          | `localhost:9092`        | Kafka broker       |
+| Zookeeper  | 2181          | 2181          | `localhost:2181`        | Kafka coordination |
+| Jaeger UI  | 16686         | 16686         | `http://localhost:16686`| Trace Visualization|
+| Grafana    | 3000          | 3002          | `http://localhost:3002` | Metrics Dashboard  |
+| Prometheus | 9090          | 9090          | `http://localhost:9090` | Raw Metrics Server |
 
 ### 💾 Data Persistence
 
@@ -647,6 +653,31 @@ This application uses **Apache Kafka** as a message broker to handle asynchronou
 - 🚀 **Scalability**: Consumers can be scaled independently
 - 🔄 **Reliability**: Messages are persisted in Kafka until successfully consumed
 - 📊 **Event Sourcing**: Logs all critical events for auditing and analytics
+
+---
+
+## 🔭 Observability & Monitoring
+
+Catalyst is built with enterprise-grade observability to ensure full visibility into system health, performance, and bottlenecks.
+
+### 📈 Metrics with Prometheus & Grafana
+- **Prometheus** scrapes metrics from the Go API's `/metrics` endpoint.
+- **Grafana** is auto-provisioned with Prometheus as a Data Source.
+- **Access Grafana**: `http://localhost:3002` (Login: `admin` / `admin`)
+- **Key Metrics Available**:
+  - `http_requests_total`: View traffic spikes and rate (TPS)
+  - `http_request_duration_seconds`: Monitor average latency
+  - Custom memory and goroutine profiling via `promauto`.
+
+![Grafana Dashboard](docs/images/grafana_dashboard.png)
+
+### 🕵️‍♂️ Distributed Tracing with OpenTelemetry & Jaeger
+When requests span across multiple layers (HTTP, Services, Database, Kafka), finding bottlenecks becomes difficult. Catalyst implements **OpenTelemetry (OTel)** to pass Context across functions.
+- **Jaeger UI**: `http://localhost:16686`
+- **Tracing Flow**: Every incoming HTTP request initiates a *Root Span*. Heavy business logic, like `TransactionService.Save()`, initiates a *Child Span*.
+- **Waterfall Visualization**: Allows engineers to visually inspect how long a specific database query or Kafka publish action took inside an overarching API request.
+
+![Jaeger Waterfall](docs/images/jaeger_waterfall.png)
 
 ---
 

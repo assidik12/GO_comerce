@@ -60,7 +60,7 @@ func setupProductServiceTesting() (*MockProductRepo, service.ProductService) {
 	wrapper := redis_repo.NewWrapper(rClient)
 	validate := validator.New()
 
-	productService := service.NewProductService(mockRepo, nil, wrapper, validate)
+	productService := service.NewProductService(mockRepo, wrapper, validate)
 	return mockRepo, productService
 }
 

@@ -5,6 +5,11 @@ import (
 	"database/sql"
 )
 
+// TransactionManager abstracts database transactions, usually implemented by *sql.DB
+type TransactionManager interface {
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}
+
 // ProductRepository defines the persistence contract for Product.
 // Implementations live in internal/repository/mysql — not here.
 type ProductRepository interface {

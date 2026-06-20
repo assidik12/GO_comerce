@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -23,21 +22,18 @@ type UserService interface {
 
 type userService struct {
 	repo      domain.UserRepository
-	DB        *sql.DB
 	validate  *validator.Validate
 	jwtSecret string // Injected secret
 }
 
 // NewUserService constructs a UserService with its dependencies.
 func NewUserService(
-	repo domain.UserRepository, 
-	DB *sql.DB, 
-	validate *validator.Validate, 
+	repo domain.UserRepository,
+	validate *validator.Validate,
 	jwtSecret string, // Injected parameter
 ) UserService {
 	return &userService{
 		repo:      repo,
-		DB:        DB,
 		validate:  validate,
 		jwtSecret: jwtSecret,
 	}

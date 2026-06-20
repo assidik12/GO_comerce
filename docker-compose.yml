@@ -140,6 +140,19 @@ services:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
 
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-service
+    restart: unless-stopped
+    ports:
+      - "3002:3000" # Mapped to 3002 to avoid conflict with Go app
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+
 volumes:
   db-data:
   redis-data:

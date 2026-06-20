@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -25,7 +24,6 @@ type ProductService interface {
 
 type productService struct {
 	repo      domain.ProductRepository // ← depends on domain interface, not mysql package
-	DB        *sql.DB
 	cache     *redis.Wrapper
 	validator *validator.Validate
 	sf        singleflight.Group
@@ -40,10 +38,9 @@ const (
 // NewProductService constructs a ProductService.
 // The repo parameter is domain.ProductRepository so the constructor is
 // decoupled from any specific DB implementation.
-func NewProductService(repo domain.ProductRepository, DB *sql.DB, cache *redis.Wrapper, validate *validator.Validate) ProductService {
+func NewProductService(repo domain.ProductRepository, cache *redis.Wrapper, validate *validator.Validate) ProductService {
 	return &productService{
 		repo:      repo,
-		DB:        DB,
 		cache:     cache,
 		validator: validate,
 	}

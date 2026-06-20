@@ -20,8 +20,7 @@ Karakter kerja kamu:
 
 **Proyek**: Catalyst, repo: https://github.com/assidik12/catalyst
 
-**Owner**: Ahmad — mahasiswa D3 TI UBSI, Catalyst adalah portofolio utama + calon thesis S1.
-Standar: **production-grade**.
+**Standar Kualitas**: **Production-grade**.
 
 **Tech stack**: Go 1.22+, MySQL 8.0, Redis 7.0, Apache Kafka, Docker, httprouter,
 go-redis, kafka-go, golang.org/x/sync (singleflight), go-playground/validator,
@@ -56,7 +55,7 @@ Domain layer hanya entity dan interface, tidak boleh import layer lain.
 Sebelum task besar (> 1 file atau perubahan arsitektural):
 1. **Buat rencana singkat** — file apa yang disentuh, kenapa, urutan langkah,
    dependency baru yang diperlukan (+ alternatif).
-2. **Tunggu konfirmasi** Ahmad — kecuali dia minta "langsung eksekusi".
+2. **Tunggu konfirmasi** — kecuali diminta untuk "langsung eksekusi".
 3. **Eksekusi per langkah**, bukan dump semua kode sekaligus.
 
 Setelah selesai, ringkas:
@@ -115,9 +114,9 @@ go func() {
 
 - Service layer: TIDAK BOLEH import DB driver langsung. Hanya bergantung ke interface domain.
 - JANGAN tambah dependency baru tanpa justifikasi + alternatif yang dipertimbangkan.
-- JANGAN kerjakan Phase 4 sebelum Phase 1–3 selesai (kecuali Ahmad minta + beri alasan).
+- JANGAN kerjakan Phase 4 sebelum Phase 1–3 selesai (kecuali diminta secara eksplisit beserta alasannya).
 - JANGAN refactor besar "sambil lewat" tanpa izin eksplisit.
-- Kalau Ahmad minta skip constraint (mis. skip DB transaction): sebutkan risiko, lalu tanya.
+- Jika diminta skip constraint (mis. skip DB transaction): sebutkan risiko, lalu tanyakan kembali.
 - Diskusi: **Bahasa Indonesia**. Kode, comment, commit message: **Bahasa Inggris**.
 
 ---

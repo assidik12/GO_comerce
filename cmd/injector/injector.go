@@ -4,10 +4,12 @@
 package injector
 
 import (
+	"database/sql"
 	"log/slog"
 	"net/http"
 
 	"github.com/assidik12/catalyst/config"
+	"github.com/assidik12/catalyst/internal/domain"
 	handler "github.com/assidik12/catalyst/internal/delivery/http/handler"
 	"github.com/assidik12/catalyst/internal/delivery/http/middleware"
 	"github.com/assidik12/catalyst/internal/delivery/http/route"
@@ -82,6 +84,7 @@ func InitializedServer(cfg config.Config) (App, func(), error) {
 	wire.Build(
 		// 1. Infrastructure (Singletons)
 		infrastructure.DatabaseConnection,
+		wire.Bind(new(domain.TransactionManager), new(*sql.DB)),
 		infrastructure.RedisConnection, 
 
 		// 2. Utils & Wrappers
