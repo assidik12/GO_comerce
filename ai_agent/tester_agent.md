@@ -21,16 +21,17 @@ Karakter kerja kamu:
 
 ## CONTEXT
 
+> **⚠️ Baca kedua dokumen berikut sebelum menulis test apapun.**
+> Semua informasi arsitektur, layer boundaries, dan behavior yang harus di-test ada di sana.
+> Test harus memvalidasi kontrak yang terdefinisi di dokumen ini.
+
+| Dokumen | Relevansi untuk Testing |
+|---|---|
+| [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) | Layer diagram (menentukan apa yang di-mock di tiap layer), event-driven flow (menentukan urutan assert), transaction atomicity (skenario rollback), caching strategy (skenario cache miss/hit) |
+| [`docs/CONCEPTS.md`](../docs/CONCEPTS.md) | Transaction boundaries (test bahwa operasi terpisah adalah WRONG pattern), cache stampede (test singleflight behavior), error semantics (test sentinel error mapping), graceful shutdown (test context cancellation) |
+| [`docs/STANDARDS.md`](../docs/STANDARDS.md) | **Standar testing yang wajib diikuti**: direktori struktur test, naming convention test, aturan deterministik, run commands (`go test -race`), commit message |
+
 **Proyek**: Catalyst, repo: https://github.com/assidik12/catalyst
-
-**Standar Kualitas**: **Enterprise-grade testing**.
-
-**Tech stack**: Go 1.22+, MySQL 8.0, Redis 7.0, Apache Kafka, Docker, httprouter,
-go-redis, kafka-go, golang.org/x/sync (singleflight), go-playground/validator,
-Google Wire, golang-migrate, **testify/mock**, **go-sqlmock**, **httptest**.
-
-**Arsitektur**: Clean Architecture 4 layer —
-`delivery/http` → `service` → `repository` → `infrastructure`.
 
 **Tools testing yang digunakan**:
 1. **testify/mock** — untuk mock `domain.XxxRepository` interface dan service interface
@@ -55,6 +56,7 @@ Google Wire, golang-migrate, **testify/mock**, **go-sqlmock**, **httptest**.
 Untuk setiap layer, pastikan test mencakup:
 
 ### Service Layer (pakai testify/mock)
+> Lihat: `docs/ARCHITECTURE.md` → **Event-Driven Processing** & **Transaction Atomicity**
 - [ ] **Happy path** — input valid, semua dependency return sukses
 - [ ] **Not found** — repository return error yang wrap `domain.ErrNotFound`
 - [ ] **Validation failure** — input invalid (field kosong, format salah, negatif)
@@ -66,6 +68,7 @@ Untuk setiap layer, pastikan test mencakup:
       rollback transaksi yang sudah commit
 
 ### Repository Layer (pakai go-sqlmock)
+> Lihat: `docs/CONCEPTS.md` → **4. Transaction Boundaries**
 - [ ] **Happy path** — query eksekusi dengan rows yang diharapkan
 - [ ] **Query error** — sqlmock return error di `ExecContext` atau `QueryContext`
 - [ ] **No rows** — `sql.ErrNoRows` di-wrap ke `domain.ErrNotFound`
@@ -74,6 +77,7 @@ Untuk setiap layer, pastikan test mencakup:
 - [ ] **Connection ping** — `Ping()` failure scenario
 
 ### Handler Layer (pakai httptest)
+> Lihat: `docs/CONCEPTS.md` → **5. Error Semantics**
 - [ ] **Happy path** — request valid return 200/201 dengan body yang benar
 - [ ] **401 Unauthorized** — tanpa atau dengan token invalid
 - [ ] **400 Bad Request** — body JSON malformed atau validation failure

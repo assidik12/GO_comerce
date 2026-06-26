@@ -18,35 +18,23 @@ Karakter kerja kamu:
 
 ## CONTEXT
 
+> **⚠️ Baca kedua dokumen berikut sebelum mengerjakan task apapun.**
+> Semua informasi arsitektur, tech stack, status proyek, dan roadmap ada di sana.
+> Jangan asumsikan — selalu cek dokumen jika ada keraguan.
+
+| Dokumen | Isi |
+|---|---|
+| [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) | Design philosophy, layer diagram, event-driven flow, caching strategy, performance characteristics, transaction atomicity, server-side validation |
+| [`docs/CONCEPTS.md`](../docs/CONCEPTS.md) | Alasan di balik setiap keputusan desain: Clean Architecture, Event-Driven, cache stampede, transaction boundaries, error semantics, DI, structured logging, graceful shutdown |
+| [`docs/STANDARDS.md`](../docs/STANDARDS.md) | **Standar penulisan kode yang wajib diikuti**: penamaan file, import order, naming convention, error handling, layer rules, DB transaction pattern, goroutine, logging, DTO, handler pattern, testing, commit message |
+
 **Proyek**: Catalyst, repo: https://github.com/assidik12/catalyst
 
-**Standar Kualitas**: **Production-grade**.
-
-**Tech stack**: Go 1.22+, MySQL 8.0, Redis 7.0, Apache Kafka, Docker, httprouter,
-go-redis, kafka-go, golang.org/x/sync (singleflight), go-playground/validator,
-Google Wire, golang-migrate, testify/mock, go-sqlmock.
-
-**Arsitektur**: Clean Architecture 4 layer —
-`delivery/http` → `service` → `repository` → `infrastructure`.
-Domain layer hanya entity dan interface, tidak boleh import layer lain.
-
-**Referensi gaya kode**:
+**Referensi gaya kode** (contoh implementasi di codebase):
 - `internal/service/transaction.service.go` — service + DB transaction + Kafka publish
 - `internal/service/product.service.go` — service + cache invalidation + singleflight
 - `internal/repository/mysql/product.repository.go` — conditional UPDATE pattern
 - `internal/delivery/http/handler/product.handler.go` — handler + DTO + error mapping
-
-**Status saat ini**:
-- Phase 1–4 selesai, 8.6/10, 100% Clean Architecture compliance.
-- Sudah ada: atomic stock decrement, graceful shutdown, async Kafka publish post-commit,
-  JWT + RBAC, Redis + singleflight, structured logging (slog).
-- Belum ada: outbox pattern, idempotency key, OpenTelemetry, Prometheus.
-
-**Roadmap** (kerjakan urut, jangan loncat):
-1. Reliability — outbox pattern + idempotency key
-2. Observability — OpenTelemetry (Jaeger) + Prometheus
-3. Test coverage — lengkapi gap + concurrent stock test
-4. AI agent integration — Anthropic API, goroutine/channel, rate limiting
 
 ---
 
@@ -68,45 +56,9 @@ Setelah selesai, ringkas:
 
 ## CODING STANDARDS
 
-**Error handling** — gunakan sentinel dari `internal/domain/errors.go`:
-```go
-// ✅ BENAR
-return fmt.Errorf("ProductService.GetByID: %w", domain.ErrNotFound)
-
-// ❌ SALAH — string mentah
-return errors.New("product not found")
-```
-
-**DB Transaction** — selalu pakai conditional UPDATE:
-```go
-tx, err := s.db.BeginTx(ctx, nil)
-if err != nil { return fmt.Errorf("begin tx: %w", err) }
-defer tx.Rollback()
-
-result, err := tx.ExecContext(ctx,
-    "UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?",
-    qty, productID, qty,
-)
-rows, _ := result.RowsAffected()
-if rows == 0 {
-    return fmt.Errorf("%w: insufficient stock", domain.ErrConflict)
-}
-return tx.Commit()
-```
-
-**Goroutine fire-and-forget** — pakai context sendiri, log error:
-```go
-// ✅ BENAR
-go func() {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-    if err := s.producer.PublishEvent(ctx, event); err != nil {
-        slog.Error("failed to publish event", "error", err)
-    }
-}()
-```
-
-**Import order**: stdlib → external → internal.
+> Seluruh standar penulisan kode ada di [`docs/STANDARDS.md`](../docs/STANDARDS.md).
+> Baca sebelum menulis kode apapun. Meliputi: error handling (sentinel),
+> DB transaction pattern, goroutine, import order, naming, logging, DTO, handler, testing, dan commit message.
 
 ---
 
@@ -114,7 +66,7 @@ go func() {
 
 - Service layer: TIDAK BOLEH import DB driver langsung. Hanya bergantung ke interface domain.
 - JANGAN tambah dependency baru tanpa justifikasi + alternatif yang dipertimbangkan.
-- JANGAN kerjakan Phase 4 sebelum Phase 1–3 selesai (kecuali diminta secara eksplisit beserta alasannya).
+- JANGAN kerjakan phase selanjutnya sebelum phase sebelumnya selesai (kecuali diminta secara eksplisit beserta alasannya). Cek roadmap terkini di `docs/ARCHITECTURE.md`.
 - JANGAN refactor besar "sambil lewat" tanpa izin eksplisit.
 - Jika diminta skip constraint (mis. skip DB transaction): sebutkan risiko, lalu tanyakan kembali.
 - Diskusi: **Bahasa Indonesia**. Kode, comment, commit message: **Bahasa Inggris**.

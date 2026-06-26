@@ -24,33 +24,17 @@ Karakter kerja kamu:
 
 ## CONTEXT
 
+> **⚠️ Baca kedua dokumen berikut sebelum melakukan review apapun.**
+> Semua informasi arsitektur, tech stack, status proyek, dan roadmap ada di sana.
+> Review harus mengacu pada standar yang terdefinisi di dokumen ini — bukan asumsi pribadi.
+
+| Dokumen | Isi |
+|---|---|
+| [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) | Design philosophy, layer diagram, event-driven flow, caching strategy, performance characteristics, transaction atomicity, server-side validation |
+| [`docs/CONCEPTS.md`](../docs/CONCEPTS.md) | Alasan di balik setiap keputusan desain: Clean Architecture, Event-Driven, cache stampede, transaction boundaries, error semantics, DI, structured logging, graceful shutdown |
+| [`docs/STANDARDS.md`](../docs/STANDARDS.md) | **Standar penulisan kode yang wajib diikuti** — gunakan sebagai checklist utama saat review: penamaan, import order, error handling, layer rules, transaction pattern, goroutine, logging, testing |
+
 **Proyek**: Catalyst (sebelumnya GO_comerce), repo: https://github.com/assidik12/catalyst
-
-**Standar Kualitas**: **Production-grade**.
-
-**Tech stack**: Go 1.22+, MySQL 8.0, Redis 7.0, Apache Kafka, Docker, httprouter,
-go-redis, kafka-go, golang.org/x/sync (singleflight), go-playground/validator,
-Google Wire, golang-migrate, testify/mock, go-sqlmock.
-
-**Arsitektur**: Clean Architecture 4 layer —
-`delivery/http (handler/dto/middleware/route)` → `service` → `repository (mysql/redis)`
-→ `infrastructure`. Domain layer (`internal/domain`) hanya berisi entity dan interface
-(port), tidak boleh bergantung ke layer lain.
-
-**Status proyek** (per commit terakhir):
-- Phase 1–4 selesai, skor 8.6/10, 100% Clean Architecture compliance.
-- Sudah ada: atomic stock decrement via conditional SQL UPDATE, graceful shutdown,
-  async Kafka publish post-commit, JWT auth + RBAC, Redis caching + singleflight,
-  structured logging via slog.
-- Belum ada: outbox pattern, idempotency key, OpenTelemetry, Prometheus metrics.
-- Test coverage masih tipis (~490 baris), belum ada test untuk user.service,
-  transaction handler, dan concurrency/race condition test untuk stok.
-
-**Roadmap** (urutan penting):
-1. Reliability hardening — outbox pattern + idempotency key
-2. Observability — OpenTelemetry (Jaeger) + Prometheus
-3. Test coverage — lengkapi gap + concurrent stock test
-4. AI agent integration — Anthropic API, goroutine/channel, rate limiting
 
 ---
 
@@ -60,6 +44,7 @@ Setiap kali melakukan review, evaluasi terhadap checklist berikut. Tandai setiap
 dengan ✅ (OK), ⚠️ (perlu diskusi), atau ❌ (BLOCKER).
 
 ### 1. Clean Architecture Compliance
+> Lihat: `docs/ARCHITECTURE.md` → **Layered Architecture**
 - [ ] Handler layer **tidak** mengandung business logic atau query SQL.
 - [ ] Service layer **tidak** import `database/sql` driver langsung atau query SQL.
 - [ ] Service layer hanya bergantung ke `domain.XxxRepository` interface, bukan ke
@@ -68,6 +53,7 @@ dengan ✅ (OK), ⚠️ (perlu diskusi), atau ❌ (BLOCKER).
 - [ ] Domain layer (`internal/domain`) tidak import package dari layer lain.
 
 ### 2. Error Handling
+> Lihat: `docs/CONCEPTS.md` → **5. Error Semantics**
 - [ ] Error baru menggunakan sentinel pattern yang ada di `internal/domain/errors.go`
       (`ErrNotFound`, `ErrInvalidInput`, `ErrUnauthorized`, `ErrConflict`).
 - [ ] Error di-wrap dengan `fmt.Errorf("%w: detail", domain.ErrXxx)`, bukan string mentah.
@@ -75,6 +61,8 @@ dengan ✅ (OK), ⚠️ (perlu diskusi), atau ❌ (BLOCKER).
 - [ ] Tidak ada error yang di-swallow diam-diam (minimal harus di-log).
 
 ### 3. Concurrency & Data Integrity
+> Lihat: `docs/ARCHITECTURE.md` → **Transaction Atomicity** & **Caching Strategy**
+> Lihat: `docs/CONCEPTS.md` → **3. Cache Stampede Prevention** & **4. Transaction Boundaries**
 - [ ] Setiap operasi yang mengubah stok atau saldo **berada dalam DB transaction**
       (`*sql.Tx`) dan menggunakan conditional UPDATE
       (`WHERE stock >= ? AND ...` + cek `RowsAffected`), bukan read-then-write terpisah.
@@ -84,6 +72,7 @@ dengan ✅ (OK), ⚠️ (perlu diskusi), atau ❌ (BLOCKER).
 - [ ] Penggunaan singleflight sudah benar untuk pattern cache stampede prevention.
 
 ### 4. Security
+> Lihat: `docs/ARCHITECTURE.md` → **Server-Side Validation**
 - [ ] Tidak ada SQL query yang dibangun via string concatenation (SQL injection risk).
 - [ ] Data sensitif (password, JWT secret, API key) tidak masuk ke log atau response body.
 - [ ] JWT claim di-validate dengan benar sebelum digunakan (exp, signature, claims type).
@@ -91,6 +80,7 @@ dengan ✅ (OK), ⚠️ (perlu diskusi), atau ❌ (BLOCKER).
       sebelum masuk ke service layer.
 
 ### 5. Code Quality & Idiom Go
+> Lihat: `docs/CONCEPTS.md` → **7. Structured Logging** & **8. Graceful Shutdown**
 - [ ] Tidak ada goroutine leak (goroutine yang di-spawn tapi tidak ada exit mechanism).
 - [ ] Context propagation benar — context tidak di-drop di tengah call chain.
 - [ ] Resource selalu di-close (defer `rows.Close()`, `tx.Rollback()` sebelum commit).
@@ -99,6 +89,7 @@ dengan ✅ (OK), ⚠️ (perlu diskusi), atau ❌ (BLOCKER).
 - [ ] Import dikelompokkan: stdlib → external → internal.
 
 ### 6. Dependency Management
+> Lihat: `docs/CONCEPTS.md` → **6. Dependency Injection**
 - [ ] Tidak ada dependency baru yang ditambahkan tanpa justifikasi yang kuat.
 - [ ] Kalau ada dependency baru, sebutkan alternatif yang dipertimbangkan.
 
