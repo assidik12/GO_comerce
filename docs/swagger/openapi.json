@@ -757,6 +757,57 @@
           }
         }
       }
+    },
+    "/ai/recommend": {
+      "post": {
+        "security": [{ "userauth": [] }],
+        "tags": ["ai api"],
+        "summary": "get smart product recommendations",
+        "description": "Sends request to AI service using LLM to generate recommendations based on search context query",
+        "operationId": "getSmartRecommend",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/aiRecommendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "AI recommendation result returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/aiRecommendResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server/AI service failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -821,6 +872,41 @@
             "type": "object",
             "properties": {
               "error": { "type": "string", "example": "Validation error" }
+            }
+          }
+        }
+      },
+      "aiRecommendRequest": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "example": "Rekomendasikan laptop untuk programming dan gaming"
+          }
+        }
+      },
+      "aiRecommendation": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "integer", "example": 2 },
+          "reason": { "type": "string", "example": "MacBook Pro M3 memiliki spesifikasi mumpuni untuk programming" }
+        }
+      },
+      "aiRecommendResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 200 },
+          "status": { "type": "string", "example": "OK" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "recommendations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/aiRecommendation"
+                }
+              }
             }
           }
         }

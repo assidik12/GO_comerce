@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/assidik12/catalyst/internal/dto"
@@ -35,6 +36,7 @@ func (h *AIHandler) SmartRecommend(w http.ResponseWriter, r *http.Request, _ htt
 	// 1. Fetch catalog (limit to 100 for AI context size)
 	products, err := h.productService.GetAllProducts(r.Context(), 1, 100)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to fetch product catalog for AI service", "error", err)
 		response.InternalServerError(w, "failed to fetch product catalog")
 		return
 	}
@@ -42,6 +44,7 @@ func (h *AIHandler) SmartRecommend(w http.ResponseWriter, r *http.Request, _ htt
 	// 2. Call AI Service
 	recommendations, err := h.aiService.Recommend(r.Context(), req.Query, products)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "ai recommendation call failed", "error", err)
 		response.InternalServerError(w, "failed to process recommendation")
 		return
 	}

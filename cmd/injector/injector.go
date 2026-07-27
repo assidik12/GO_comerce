@@ -70,6 +70,15 @@ var transactionSet = wire.NewSet(
 	handler.NewTransactionHandler,
 )
 
+var aiSet = wire.NewSet(
+	ProvideAIService,
+	handler.NewAIHandler,
+)
+
+func ProvideAIService(cfg config.Config) service.AIService {
+	return service.NewOpenAIService(cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModel)
+}
+
 // ProvideLogger initializes slog based on config environment.
 func ProvideLogger(cfg config.Config) *slog.Logger {
 	return logger.New(cfg.AppEnv)
@@ -99,6 +108,7 @@ func InitializedServer(cfg config.Config) (App, func(), error) {
 		productSet,
 		outboxSet,
 		transactionSet,
+		aiSet,
 
 		// 4. HTTP & Routing
 		route.NewRouter,

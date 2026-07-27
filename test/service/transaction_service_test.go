@@ -14,7 +14,6 @@ import (
 	"github.com/assidik12/catalyst/internal/domain"
 	"github.com/assidik12/catalyst/internal/event"
 	"github.com/assidik12/catalyst/internal/service"
-	gomysql "github.com/go-sql-driver/mysql"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -226,15 +225,11 @@ func TestSaveTransaction_IdempotencyConflict(t *testing.T) {
 
 	sqlMock.ExpectBegin()
 
-	// Service uses type assertion: err.(*mysql.MySQLError), so we must return a real MySQLError.
-	// Number=1062 is the MySQL duplicate-entry error code.
-	// Message must contain "idempotency_key" to trigger the ErrConflict mapping.
-	duplicateErr := &gomysql.MySQLError{
-		Number:  1062,
-		Message: "Duplicate entry 'idem-key-abc' for key 'idempotency_key'",
-	}
+	// Since we map database driver-specific errors (like 1062 duplicate keys) 
+	// inside the Repository implementation rather than the Service layer, 
+	// the MockRepository should return the domain-mapped sentinel error (domain.ErrConflict).
 	mockTxRepo.On("Save", mock.Anything, mock.AnythingOfType("*sql.Tx"), mock.Anything).
-		Return(domain.Transaction{}, duplicateErr)
+		Return(domain.Transaction{}, domain.ErrConflict)
 
 	// defer tx.Rollback() in production code fires after function returns with error
 	sqlMock.ExpectRollback()

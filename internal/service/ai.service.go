@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/assidik12/catalyst/internal/domain"
 	"github.com/assidik12/catalyst/internal/dto"
@@ -16,26 +17,41 @@ type AIService interface {
 	Recommend(ctx context.Context, query string, products []domain.Product) (dto.AIRecommendResponse, error)
 }
 
-type anthropicAIService struct {
+type openAIService struct {
 	apiKey     string
 	baseURL    string
+	model      string
 	httpClient *http.Client
 }
 
-// NewAnthropicAIService creates a new instance of anthropicAIService.
-func NewAnthropicAIService(apiKey string, baseURL string) AIService {
+// NewOpenAIService creates a new instance of openAIService (OpenAI Compatible Mode).
+func NewOpenAIService(apiKey string, baseURL string, model string) AIService {
 	if baseURL == "" {
-		baseURL = "https://api.anthropic.com/v1/messages"
+		baseURL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 	}
-	return &anthropicAIService{
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		httpClient: &http.Client{},
+	// Ensure baseURL ends with /chat/completions
+	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {
+		baseURL = baseURL[:len(baseURL)-1]
+	}
+	if !bytes.HasSuffix([]byte(baseURL), []byte("/chat/completions")) {
+		baseURL = baseURL + "/chat/completions"
+	}
+
+	if model == "" {
+		model = "qwen3.7-flash"
+	}
+	return &openAIService{
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		model:   model,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
-// Recommend sends a request to Anthropic API to get product recommendations.
-func (s *anthropicAIService) Recommend(ctx context.Context, query string, products []domain.Product) (dto.AIRecommendResponse, error) {
+// Recommend sends a request to OpenAI compatible API (e.g. Qwen) to get product recommendations.
+func (s *openAIService) Recommend(ctx context.Context, query string, products []domain.Product) (dto.AIRecommendResponse, error) {
 	productsJSON, err := json.Marshal(products)
 	if err != nil {
 		return dto.AIRecommendResponse{}, fmt.Errorf("failed to marshal products: %w", err)
@@ -44,10 +60,12 @@ func (s *anthropicAIService) Recommend(ctx context.Context, query string, produc
 	systemPrompt := `You are a shopping assistant. Respond ONLY with raw JSON format matching: {"recommendations": [{"product_id": 1, "reason": "..."}]}`
 
 	payload := map[string]interface{}{
-		"model":      "claude-3-haiku-20240307",
-		"max_tokens": 1024,
-		"system":     systemPrompt,
+		"model": s.model,
 		"messages": []map[string]interface{}{
+			{
+				"role":    "system",
+				"content": systemPrompt,
+			},
 			{
 				"role":    "user",
 				"content": fmt.Sprintf("Query: %s\nCatalog: %s", query, string(productsJSON)),
@@ -65,37 +83,39 @@ func (s *anthropicAIService) Recommend(ctx context.Context, query string, produc
 		return dto.AIRecommendResponse{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("x-api-key", s.apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return dto.AIRecommendResponse{}, fmt.Errorf("failed to call anthropic api: %w", err)
+		return dto.AIRecommendResponse{}, fmt.Errorf("failed to call ai api: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return dto.AIRecommendResponse{}, fmt.Errorf("anthropic api returned status: %d", resp.StatusCode)
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		return dto.AIRecommendResponse{}, fmt.Errorf("ai api status %d: %s", resp.StatusCode, buf.String())
 	}
 
-	var anthropicResp struct {
-		Content []struct {
-			Text string `json:"text"`
-			Type string `json:"type"`
-		} `json:"content"`
+	var openAIResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&anthropicResp); err != nil {
-		return dto.AIRecommendResponse{}, fmt.Errorf("failed to decode anthropic response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&openAIResp); err != nil {
+		return dto.AIRecommendResponse{}, fmt.Errorf("failed to decode ai response: %w", err)
 	}
 
-	if len(anthropicResp.Content) == 0 {
-		return dto.AIRecommendResponse{}, fmt.Errorf("empty content from anthropic")
+	if len(openAIResp.Choices) == 0 {
+		return dto.AIRecommendResponse{}, fmt.Errorf("empty choices from ai provider")
 	}
 
 	var aiResp dto.AIRecommendResponse
-	if err := json.Unmarshal([]byte(anthropicResp.Content[0].Text), &aiResp); err != nil {
+	if err := json.Unmarshal([]byte(openAIResp.Choices[0].Message.Content), &aiResp); err != nil {
 		return dto.AIRecommendResponse{}, fmt.Errorf("failed to unmarshal recommendation: %w", err)
 	}
 

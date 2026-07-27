@@ -46,7 +46,9 @@ func InitializedServer(cfg config.Config) (App, func(), error) {
 	logger := ProvideLogger(cfg)
 	transactionService := service.NewTransactionService(transactionRepository, db, validate, userRepository, productRepository, outboxRepository, kafkaProducer, logger)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
-	router := route.NewRouter(userHandler, productHandler, transactionHandler, string2)
+	aiService := ProvideAIService(cfg)
+	aiHandler := handler.NewAIHandler(aiService, productService)
+	router := route.NewRouter(userHandler, productHandler, transactionHandler, aiHandler, string2)
 	authMiddleware := middleware.NewAuthMiddleware(router)
 	server := config.NewServer(authMiddleware)
 	outboxRelay := worker.NewOutboxRelay(outboxRepository, kafkaProducer, logger)
@@ -82,6 +84,14 @@ var productSet = wire.NewSet(mysql.NewProductRepository, service.NewProductServi
 var outboxSet = wire.NewSet(mysql.NewOutboxRepository, worker.NewOutboxRelay)
 
 var transactionSet = wire.NewSet(mysql.NewTransactionRepository, service.NewTransactionService, handler.NewTransactionHandler)
+
+var aiSet = wire.NewSet(
+	ProvideAIService, handler.NewAIHandler,
+)
+
+func ProvideAIService(cfg config.Config) service.AIService {
+	return service.NewOpenAIService(cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModel)
+}
 
 // ProvideLogger initializes slog based on config environment.
 func ProvideLogger(cfg config.Config) *slog.Logger {

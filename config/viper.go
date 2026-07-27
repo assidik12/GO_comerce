@@ -22,6 +22,9 @@ type Config struct {
 	KafkaHost     string `mapstructure:"KAFKA_HOST"`
 	KafkaPort     string `mapstructure:"KAFKA_PORT"`
 	AppEnv        string `mapstructure:"APP_ENV"`
+	AIAPIKey  string `mapstructure:"AI_API_KEY"`
+	AIBaseURL string `mapstructure:"AI_BASE_URL"`
+	AIModel   string `mapstructure:"AI_MODEL"`
 }
 
 // cfg adalah instance singleton dari Config.

@@ -13,6 +13,7 @@ func NewRouter(
 	userHandler *handler.UserHandler,
 	productHandler *handler.ProductHandler,
 	transactionHandler *handler.TransactionHandler,
+	aiHandler *handler.AIHandler,
 	jwtSecret string,
 ) *httprouter.Router {
 	router := httprouter.New()
@@ -45,5 +46,6 @@ func NewRouter(
 
 	router.Handler("GET", "/api/v1/docs/*filepath", http.StripPrefix("/api/v1/docs/", fileServer))
 
+	router.POST("/api/v1/ai/recommend", wrap("/api/v1/ai/recommend", authMiddleware.Middleware("user", aiHandler.SmartRecommend, jwtSecret)))
 	return router
 }

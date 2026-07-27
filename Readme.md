@@ -244,7 +244,7 @@ go tool cover -html=coverage.out
 | Phase 1 | Reliability — outbox pattern + idempotency key | ✅ Done |
 | Phase 2 | Observability — OpenTelemetry + Prometheus | ✅ Done |
 | Phase 3 | Test coverage — comprehensive suite + concurrent testing | ✅ Done |
-| Phase 4 | AI agent integration — Anthropic API, goroutine/channel | ⏳ In Progress |
+| Phase 4 | AI agent integration — Qwen OpenAI API / LLM integration | ✅ Done |
 | Phase 5 | Future — Kafka consumers, CI/CD, gRPC, Swagger auto-gen | 📅 Backlog |
 
 > 📖 **Detailed roadmap**: See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#project-status--roadmap)
